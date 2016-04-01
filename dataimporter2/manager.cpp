@@ -57,7 +57,7 @@ void Manager::login(const QString &url, int port, int clientId)
 
 void Manager::logout()
 {
-
+//    m_ibqt->di
 }
 
 bool Manager::initializeSqlDatabase()
@@ -134,9 +134,11 @@ void Manager::downloadQuotes()
         m_lock = true;
         while (m_lock) {
             if (m_stopButtonClicked) {
-                m_stopButtonClicked = false;
+                qDebug() << "STOP BUTTON CLICKED .. LEAVING DOWNLOAD QUOTES";
+//                m_stopButtonClicked = false;
                 return;
             }
+            qDebug() << "-";
             delay(100);
         }
     }
@@ -201,7 +203,7 @@ void Manager::setTimeFrame(const TimeFrame &timeFrame)
     case SEC_1:
         m_timeFrameString = "1 Sec";
         m_timeFrameInSeconds = 1;
-        m_durationStr = "1800 S";
+        m_durationStr = "1800 S"; //
         break;
     case SEC_5:
         m_timeFrameString = "5 Sec";
@@ -395,6 +397,7 @@ void Manager::onContractDetailsEnd(int reqId)
         m_symbolMap[histId] = s;
 //        m_symbolMap.remove(reqId);
         qDebug() << "calling reqHistoricalData() .. reqId:" << histId << ".. dt:" << dt;
+        m_lastReqId = histId;
         m_ibqt->reqHistoricalData(histId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
                                   m_durationStr.toLatin1(), m_barSizes.at((int)m_timeFrame).toLatin1(),
                                   QByteArray("TRADES"), 1, 2, QList<TagValue*>());
@@ -417,8 +420,17 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
         qDebug() << "m_symbolMap[reqId] is NULL";
         return;
     }
+    qDebug() << "m_stopButtonClicked is:" << m_stopButtonClicked;
 
-    if (date.contains("finished")) {
+    if (m_stopButtonClicked) {
+//        date = "finished";
+        m_ibqt->cancelHistoricalData(reqId);
+        m_lock = false;
+        return;
+//        m_stopButtonClicked = false;
+    }
+
+    if (date.contains("finished") || m_stopButtonClicked) {
 
         qDebug() << "date.contains('finished') for:" << s->tableName << "m_cdtData.size():" << m_cdtData.size();
         qDebug() << "    s->model->rowCount():" << s->model->rowCount();
@@ -447,6 +459,7 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
             m_symbolMap[newId] = s;
 //            m_symbolMap.remove(reqId);
 
+            m_lastReqId = newId;
             m_ibqt->reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
                 m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
             return;
@@ -483,6 +496,7 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
                 m_symbolMap[newId] = s;
 //                m_symbolMap.remove(reqId);
 
+                m_lastReqId = newId;
                 m_ibqt->reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
                     m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
                 return;
@@ -530,6 +544,7 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
                 delay(15 * 1000);
                 // END DELAY
 
+                m_lastReqId = newId;
                 m_ibqt->reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
                                                                m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
                 return;
@@ -605,10 +620,11 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
 
 //        qDebug() << "dt:" << dt << "m_durationStr:" << m_durationStr;
 
-        m_lastReqId = newId;
         m_lastDt = dt;
 
         qDebug() << "calling reqHistoricalData() .. edt .. dt:" << dt;
+
+        m_lastReqId = newId;
         m_ibqt->reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
                                   m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
         return;
@@ -629,8 +645,8 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
             (low < 1) /*|| (volume < 1)*/)
     {
         qDebug() << "FILTER:" << dlStr << "open:" << open << "high:" << high << "low:" << low << "close:" << close << "volume:" << volume;
-        m_ibqt->cancelHistoricalData(reqId);
-        onHistoricalData(reqId, "finished", 0, 0, 0, 0, 0, 0, 0, 0);
+//        m_ibqt->cancelHistoricalData(reqId);
+//        onHistoricalData(reqId, "finished", 0, 0, 0, 0, 0, 0, 0, 0);
         return;
     }
 
@@ -757,16 +773,18 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
         qDebug() << "[IBQT WARN]" << id << errorCode << errorString
                  << "            CLEARING MESSAGE AND RE-REQUESTING.. 15 sec delay";
         Symbol* s = m_symbolMap[m_lastReqId];
-        long newId = m_ibqt->getTickerId();
-        m_symbolMap[newId] = s;
         if (s == NULL) {
             qDebug() << "In onError: s == NULL";
             return;
         }
+        long newId = m_ibqt->getTickerId();
+        m_symbolMap[newId] = s;
+
 //        m_symbolMap.remove(m_lastReqId);
-        m_lastReqId = newId;
         delay(15 * 1000);
-        m_ibqt->reqHistoricalData(m_lastReqId, s->contractDetails.summary, ibEndDateTimeToString(m_lastDt).toLatin1(),
+
+        m_lastReqId = newId;
+        m_ibqt->reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(m_lastDt).toLatin1(),
                                   m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
     }
     else if (errorCode == 162)

@@ -252,6 +252,8 @@ void MainWindow::on_startButton_clicked()
     ui->startButton->setEnabled(false);
     ui->stopButton->setEnabled(true);
 
+    m_mgr->setStopButtonClicked(false);
+
     m_mgr->downloadQuotes();
 
 
