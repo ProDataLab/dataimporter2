@@ -808,6 +808,11 @@ void Manager::onRealTimeDataTimerTimeout()
 {
     qDebug() << "onRealTimeDataTimerTimeout()";
 
+    QDateTime cdt = QDateTime::currentDateTime();
+
+    if (!(timeIsInLiquidTradingHours(cdt)))
+        return;
+
     // we are collecting data for more than one symbol, probably
     for (int i=0;i<m_realTimeIds.size();++i) {
         long rtId = m_realTimeIds.at(i);
@@ -830,7 +835,19 @@ void Manager::onRealTimeDataTimerTimeout()
                 close = last;
             volume += s->realTimeData.at(i)->size;
         }
-        QDateTime   ndt         = ldt.addSecs(m_timeFrameInSeconds);
+
+        QDateTime ndt;
+
+        if (!timeIsSameTradingDay(ldt)
+                && cdt > m_liquidHoursStartTime
+                /*&& cdt < m_liquidHoursEndTime.addSecs(m_timeFrameInSeconds)*/)
+        {
+            ndt = m_liquidHoursStartTime;
+        }
+        else if (timeIsSameTradingDay(ldt)){
+            ndt = ldt.addSecs(m_timeFrameInSeconds);
+        }
+
         QString     timeString  = ndt.toString("yyyy-MM-dd hh:mm:ss");
         QSqlRecord  r           = s->model->record();
         r.setValue(0, ndt.toTime_t());
@@ -850,31 +867,56 @@ void Manager::onRealTimeDataTimerTimeout()
         m_db.close();
         m_db.setDatabaseName(m_sqlDatabaseName);
         m_db.open();
+
+        QSqlQuery q;
+
+        // USING SQL INSERT COMMAND INSTEAD OF SQL TABLE MODEL
+        if (!q.exec(QString("insert into ") + s->tableName + QString(" values")
+            + QString("(")
+            + r.value("timestamp").toString() + QString(", ")
+            + QString("'") + r.value("timeString").toString() + QString("', ")
+            + r.value("open").toString() + QString(", ")
+            + r.value("high").toString() + QString(", ")
+            + r.value("low").toString() + QString(", ")
+            + r.value("close").toString() + QString(", ")
+            + r.value("volume").toString() + QString(", ")
+            + QString("'") + s->timeFrameString + QString("'")
+            + QString(")")))
+        {
+            qDebug() << "q->exec (insert into) failed for table:" << s->tableName << "at" << i << "q->exec error:" << q.lastError();
+        }
+        else {
+            q.finish();
+            emit downloading(QString("Sending record: ") + QString::number(i) + QString(" of ") + QString::number(s->data.size()) + QString(" to ") + s->tableName + QString(" in MySql."));
+        }
+        // END USING SQL INSERT COMMAND
+
+
         s->model->insertRecord(-1, r);
-        qDebug() << "s->model->rowCount():" << s->model->rowCount();
+//        qDebug() << "s->model->rowCount():" << s->model->rowCount();
 
-        r = s->model->record(s->model->rowCount()-1);
+//        r = s->model->record(s->model->rowCount()-1);
 
-        qDebug() << "START QDEBUG";
-        qDebug() << r.value(0);
-        qDebug() << r.value(1);
-        qDebug() << r.value(2);
-        qDebug() << r.value(3);
-        qDebug() << r.value(4);
-        qDebug() << r.value(5);
-        qDebug() << r.value(6);
-        qDebug() << r.value(7);
-        qDebug() << "END QDEBUG";
+//        qDebug() << "START QDEBUG";
+//        qDebug() << r.value(0);
+//        qDebug() << r.value(1);
+//        qDebug() << r.value(2);
+//        qDebug() << r.value(3);
+//        qDebug() << r.value(4);
+//        qDebug() << r.value(5);
+//        qDebug() << r.value(6);
+//        qDebug() << r.value(7);
+//        qDebug() << "END QDEBUG";
 
 
-        bool isDirty = s->model->isDirty();
-        if (!isDirty)
-            return;
+//        bool isDirty = s->model->isDirty();
+//        if (!isDirty)
+//            return;
 
-        qDebug() << "isDirty:" << isDirty;
+//        qDebug() << "isDirty:" << isDirty;
 
-        if (isDirty) {
-            s->model->submitAll();
+//        if (isDirty) {
+//            s->model->submitAll();
 //            s->model->database().transaction();
 //            if (s->model->submit()) {
 //                if (!s->model->database().commit())
@@ -883,7 +925,7 @@ void Manager::onRealTimeDataTimerTimeout()
 //                s->model->database().rollback();
 //                qDebug() << "[WARN] The sql database reported an error:" << s->model->lastError().text();
 //            }
-        }
+//        }
     //    m_lastReq
 
 
@@ -1004,24 +1046,33 @@ void Manager::parseLiquidHours(const QByteArray &liquidHoursString, const QByteA
     qDebug() << "date:" << date;
     QString times = today.split(':').at(1);
     qDebug() << "times:" << times;
-    QString startTime = times.split('-').at(0);
+    QStringList timesList = times.split('-', QString::SkipEmptyParts);
+    QString startTime = timesList.at(0);
     qDebug() << "startTime:" << startTime;
-    QString endTime = times.split('-').at(1);
-    qDebug() << "endTime:" << endTime;
+    if (startTime != "CLOSED") {
+        QString endTime = times.split('-', QString::SkipEmptyParts).at(1);
+        qDebug() << "endTime:" << endTime;
 
-    m_liquidHoursStartTime = QDateTime::fromString(date+startTime, "yyyyMMddhhmm");
-    m_liquidHoursEndTime   = QDateTime::fromString(date+endTime, "yyyyMMddhhmm");
+        m_liquidHoursStartTime = QDateTime::fromString(date+startTime, "yyyyMMddhhmm");
+        m_liquidHoursEndTime   = QDateTime::fromString(date+endTime, "yyyyMMddhhmm");
 
-    qDebug() << "m_liquidHoursStartTime:" << m_liquidHoursStartTime;
-    qDebug() << "m_liquidHoursEndTime:" << m_liquidHoursEndTime;
-
+        qDebug() << "m_liquidHoursStartTime:" << m_liquidHoursStartTime;
+        qDebug() << "m_liquidHoursEndTime:" << m_liquidHoursEndTime;
+    }
+    else {
+        m_liquidHoursStartTime = QDateTime();
+        m_liquidHoursEndTime = QDateTime();
+    }
 }
 
 bool Manager::timeIsInLiquidTradingHours(const QDateTime & dt)
 {
     qDebug() << "m_liquidStart:" << m_liquidHoursStartTime << "liquidEnd:" << m_liquidHoursEndTime;
 
-    bool ret = (dt > m_liquidHoursStartTime && dt < m_liquidHoursEndTime);
+    bool ret = !(m_liquidHoursStartTime.isNull() || m_liquidHoursEndTime.isNull());
+
+    if (ret)
+        ret = (dt > m_liquidHoursStartTime && dt < m_liquidHoursEndTime);
 
 //    qDebug() << "In timeIsInLiquidTradingHours() returning:" <<  ret;
 
