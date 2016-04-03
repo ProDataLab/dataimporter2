@@ -99,6 +99,7 @@ private slots:
     void onIbSocketError(const QString & errorString);
     void onConnectionClosed();
     void onRealTimeDataTimerTimeout();
+    void onRequestedHistoricalDataTimerTimeout();
 
 
 private:
@@ -130,6 +131,7 @@ private:
     QVector<QSqlRecord> m_cdtData;
     QVector<QSqlRecord> m_edtData;
     QTimer*             m_realTimeDataTimer;
+    QTimer*             m_reqHistoricalDataTimer;
     QVector<long>       m_realTimeIds;
     QMap<Symbol*,IbHdf5*> m_hdf5Map;
     bool                m_isConnected;
@@ -147,6 +149,8 @@ private:
     void        parseLiquidHours(const QByteArray & liquidHoursString, const QByteArray &timeZone);
     bool        timeIsInLiquidTradingHours(const QDateTime & dt);
     bool        timeIsSameTradingDay(const QDateTime & dt);
+    void        reqHistoricalData(long tickerId, const Contract &contract, const QByteArray &endDateTime, const QByteArray &durationStr,
+                                  const QByteArray &barSizeSetting, const QByteArray &whatToShow, int useRTH, int formatDate, const QList<TagValue *> &chartOptions);
 };
 
 #endif // MANAGER_H
