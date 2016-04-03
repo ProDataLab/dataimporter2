@@ -87,6 +87,7 @@ signals:
 public slots:
 
 private slots:
+    void onTwsConnected();
     void onManagedAccounts(const QByteArray & accountList);
     void onContractDetails(int reqId, const ContractDetails & contractDetails);
     void onContractDetailsEnd(int reqId);
@@ -98,12 +99,17 @@ private slots:
     void onError(const int id, const int errorCode, const QByteArray errorString);
     void onIbSocketError(const QString & errorString);
     void onConnectionClosed();
+    void onLoginTimerTimeout();
     void onRealTimeDataTimerTimeout();
     void onRequestedHistoricalDataTimerTimeout();
 
 
 private:
     IBQt*               m_ibqt;
+    QString             m_ibUrl;
+    int                 m_ibPort;
+    int                 m_ibClientId;
+    int                 m_loginAttemptNumber;
     bool                m_reconnectOnFailure;
     QString             m_sqlHostName;
     int                 m_sqlPort;
@@ -130,6 +136,7 @@ private:
     QStringList         m_barSizes;
     QVector<QSqlRecord> m_cdtData;
     QVector<QSqlRecord> m_edtData;
+    QTimer*             m_loginTimer;
     QTimer*             m_realTimeDataTimer;
     QTimer*             m_reqHistoricalDataTimer;
     QVector<long>       m_realTimeIds;

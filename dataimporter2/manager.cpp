@@ -21,8 +21,12 @@ Manager::Manager(QObject *parent)
 {
 
     m_ibqt = new IBQt(this);
-    m_realTimeDataTimer = new QTimer(this);
 
+    m_loginTimer = new QTimer(this);
+    m_realTimeDataTimer = new QTimer(this);
+    m_reqHistoricalDataTimer = new QTimer(this);
+
+    connect(m_ibqt, SIGNAL(twsConnected()), this, SLOT(onTwsConnected()));
     connect(m_ibqt, SIGNAL(managedAccounts(QByteArray)), this, SLOT(onManagedAccounts(QByteArray)));
     connect(m_ibqt, SIGNAL(contractDetails(int,ContractDetails)), this, SLOT(onContractDetails(int,ContractDetails)));
     connect(m_ibqt, SIGNAL(contractDetailsEnd(int)), this, SLOT(onContractDetailsEnd(int)));
@@ -36,7 +40,7 @@ Manager::Manager(QObject *parent)
 
     connect(m_realTimeDataTimer, SIGNAL(timeout()), this, SLOT(onRealTimeDataTimerTimeout()));
     connect(m_reqHistoricalDataTimer, SIGNAL(timeout()), this, SLOT(onRequestedHistoricalDataTimerTimeout()));
-
+    connect(m_loginTimer, SIGNAL(timeout()), SLOT(onLoginTimerTimeout()));
 
     m_barSizes << "1 secs"
                << "5 secs"
@@ -54,12 +58,18 @@ Manager::Manager(QObject *parent)
 
 void Manager::login(const QString &url, int port, int clientId)
 {
+    m_ibUrl = url;
+    m_ibPort = port;
+    m_ibClientId = clientId;
+
+    m_loginTimer->start(1000 * 10);
+    m_loginAttemptNumber = 1;
     m_ibqt->connectToTWS(url.toLatin1(), (quint16)port, clientId);
 }
 
 void Manager::logout()
 {
-//    m_ibqt->di
+    m_ibqt->disconnectTWS();
 }
 
 bool Manager::initializeSqlDatabase()
@@ -800,13 +810,25 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
 
 void Manager::onIbSocketError(const QString &errorString)
 {
-
+    login(m_ibUrl, m_ibPort, m_ibClientId);
 }
 
 void Manager::onConnectionClosed()
 {
     m_isConnected = false;
     emit disconnected();
+    login(m_ibUrl, m_ibPort, m_ibClientId);
+}
+
+void Manager::onLoginTimerTimeout()
+{
+    emit downloading("Attempt number " + QString::number(++m_loginAttemptNumber) + " to login into IB");
+
+    if (m_isConnected) {
+        m_loginTimer->stop();
+        return;
+    }
+    m_ibqt->connectToTWS(m_ibUrl.toLatin1(), m_ibPort, m_ibClientId);
 }
 
 void Manager::onRealTimeDataTimerTimeout()
@@ -970,6 +992,12 @@ void Manager::onRequestedHistoricalDataTimerTimeout()
 bool Manager::isConnected() const
 {
     return m_isConnected;
+}
+
+void Manager::onTwsConnected()
+{
+    m_loginAttemptNumber = 0;
+    m_loginTimer->stop();
 }
 
 void Manager::delay(int milliseconds)
