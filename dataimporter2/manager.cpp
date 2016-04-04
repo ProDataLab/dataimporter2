@@ -62,8 +62,8 @@ void Manager::login(const QString &url, int port, int clientId)
     m_ibPort = port;
     m_ibClientId = clientId;
 
-    m_loginTimer->start(1000 * 10);
-    m_loginAttemptNumber = 1;
+//    m_loginTimer->start(1000 * 10);
+//    m_loginAttemptNumber = 1;
     m_ibqt->connectToTWS(url.toLatin1(), (quint16)port, clientId);
 }
 
@@ -153,6 +153,9 @@ void Manager::downloadQuotes()
             qDebug() << "-";
             delay(100);
         }
+
+        if (m_reqHistoricalDataTimer->isActive())
+            m_reqHistoricalDataTimer->stop();
     }
 }
 
@@ -448,6 +451,7 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
 
         qDebug() << "date.contains('finished') for:" << s->tableName << "m_cdtData.size():" << m_cdtData.size();
         qDebug() << "    s->model->rowCount():" << s->model->rowCount();
+        qDebug() << "    The timezone for the symbol's exchange is:" << s->contractDetails.timeZoneId;
 
         // THIS IS A LOGICAL HACK!
         if (s->model->rowCount() == 1) {
@@ -782,7 +786,7 @@ void Manager::onTickSize(const long &tickerId, const TickType &field, int size)
 
 void Manager::onError(const int id, const int errorCode, const QByteArray errorString)
 {
-    if (errorCode == 2104 || errorCode == 2106)
+    if (errorCode == 2104 || errorCode == 2106 || errorCode == 2108)
         qDebug() << "[IBQT INFO]" << id << errorCode << errorString;
     else if (errorCode == 505) {
         qDebug() << "[IBQT WARN]" << id << errorCode << errorString
@@ -802,8 +806,9 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
         reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(m_lastDt).toLatin1(),
                                   m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
     }
-    else if (errorCode == 162)
+    else if (errorCode == 162 || errorCode == 200)
         m_lock == false;
+
     else
         qDebug() << "[IBQT ERROR]" << id << errorCode << errorString;
 }
@@ -1074,10 +1079,10 @@ void Manager::sqlSubmit(long reqId)
 
 void Manager::parseLiquidHours(const QByteArray &liquidHoursString, const QByteArray & timeZone)
 {
-    if (timeZone != QByteArray("EST5EDT")) {
-        qDebug() << "[ERROR] TimeZone of this security is not yet supported! tz:" << timeZone;
-        return;
-    }
+//    if (timeZone != QByteArray("EST5EDT")) {
+//        qDebug() << "[ERROR] TimeZone of this security is not yet supported! tz:" << timeZone;
+//        return;
+//    }
 
     QString lhs(liquidHoursString);
     QString today = lhs.split(';').at(0);
@@ -1089,6 +1094,9 @@ void Manager::parseLiquidHours(const QByteArray &liquidHoursString, const QByteA
     QStringList timesList = times.split('-', QString::SkipEmptyParts);
     QString startTime = timesList.at(0);
     qDebug() << "startTime:" << startTime;
+
+    qDebug() << "timeZone:" << timeZone;
+
     if (startTime != "CLOSED") {
         QString endTime = times.split('-', QString::SkipEmptyParts).at(1);
         qDebug() << "endTime:" << endTime;
