@@ -850,11 +850,11 @@ void Manager::onRealTimeDataTimerTimeout()
         long rtId = m_realTimeIds.at(i);
         Symbol* s = m_symbolMap[rtId];
         QDateTime ldt = QDateTime::fromTime_t(s->model->record(s->model->rowCount()-1).value("timestamp").toUInt());
-        double open;
+        double open = 0;
         double high = 0;
         double low = 9999;
-        double close;
-        int volume;
+        double close = 0;
+        int volume = 0;
         for (int j=0;j<s->realTimeData.size();++j) {
             double last = s->realTimeData.at(i)->last;
             if (j==0)
@@ -865,7 +865,10 @@ void Manager::onRealTimeDataTimerTimeout()
                 low = last;
             if (j==s->realTimeData.size()-1)
                 close = last;
+            qDebug() << "size:" << s->realTimeData.at(i)->size;
             volume += s->realTimeData.at(i)->size;
+            qDebug() << "volume:" << volume;
+
         }
 
         QDateTime ndt;
@@ -879,9 +882,13 @@ void Manager::onRealTimeDataTimerTimeout()
         else if (timeIsSameTradingDay(ldt)){
             ndt = ldt.addSecs(m_timeFrameInSeconds);
         }
+                                            // 2016-04-04 13:57:00
+        QString timeString  = ndt.toString("yyyy-MM-dd hh:mm:ss");
 
-        QString     timeString  = ndt.toString("yyyy-MM-dd hh:mm:ss");
-        QSqlRecord  r           = s->model->record();
+        qDebug() << "ndt:" << ndt;
+        qDebug() << "timeString:" << timeString;
+
+        QSqlRecord  r = s->model->record();
         r.setValue(0, ndt.toTime_t());
         r.setValue(1, timeString);
         r.setValue(2, open);
@@ -902,10 +909,13 @@ void Manager::onRealTimeDataTimerTimeout()
 
         QSqlQuery q;
 
+//        qDebug() << "r.value('timeString').toString():" << r.value("timeString").toString();
+//        qDebug() << "r.value('volume').toString():" << r.value("volume").toString();
+
         // USING SQL INSERT COMMAND INSTEAD OF SQL TABLE MODEL
         if (!q.exec(QString("insert into ") + s->tableName + QString(" values")
             + QString("(")
-            + r.value("timestamp").toString() + QString(", ")
+            + r.value("timeString").toString() + QString(", ")
             + QString("'") + r.value("timeString").toString() + QString("', ")
             + r.value("open").toString() + QString(", ")
             + r.value("high").toString() + QString(", ")
@@ -1079,6 +1089,8 @@ void Manager::sqlSubmit(long reqId)
 
 void Manager::parseLiquidHours(const QByteArray &liquidHoursString, const QByteArray & timeZone)
 {
+    qDebug() << "In parseLiquidHours()";
+
 //    if (timeZone != QByteArray("EST5EDT")) {
 //        qDebug() << "[ERROR] TimeZone of this security is not yet supported! tz:" << timeZone;
 //        return;
@@ -1102,7 +1114,12 @@ void Manager::parseLiquidHours(const QByteArray &liquidHoursString, const QByteA
         qDebug() << "endTime:" << endTime;
 
         m_liquidHoursStartTime = QDateTime::fromString(date+startTime, "yyyyMMddhhmm");
+        m_liquidHoursStartTime.setTimeZone(QTimeZone(timeZone));
+        m_liquidHoursStartTime = m_liquidHoursStartTime.toTimeSpec(Qt::LocalTime);
+
         m_liquidHoursEndTime   = QDateTime::fromString(date+endTime, "yyyyMMddhhmm");
+        m_liquidHoursEndTime.setTimeZone(QTimeZone(timeZone));
+        m_liquidHoursEndTime = m_liquidHoursEndTime.toTimeSpec(Qt::LocalTime);
 
         qDebug() << "m_liquidHoursStartTime:" << m_liquidHoursStartTime;
         qDebug() << "m_liquidHoursEndTime:" << m_liquidHoursEndTime;
