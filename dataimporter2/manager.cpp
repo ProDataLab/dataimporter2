@@ -939,8 +939,6 @@ void Manager::onRealTimeDataTimerTimeout()
                 close = last;
                 s->realTimeData.clear();
             }
-
-
         }
 
 
@@ -980,9 +978,6 @@ void Manager::onRealTimeDataTimerTimeout()
 
         QSqlQuery q;
 
-//        qDebug() << "r.value('timeString').toString():" << r.value("timeString").toString();
-//        qDebug() << "r.value('volume').toString():" << r.value("volume").toString();
-
         // USING SQL INSERT COMMAND INSTEAD OF SQL TABLE MODEL
         if (!q.exec(QString("insert into ") + s->tableName + QString(" values")
             + QString("(")
@@ -1002,48 +997,12 @@ void Manager::onRealTimeDataTimerTimeout()
             q.finish();
             emit downloading(QString("Sending record: ") + QString::number(i) + QString(" of ") + QString::number(s->data.size()) + QString(" to ") + s->tableName + QString(" in MySql."));
         }
+
         // END USING SQL INSERT COMMAND
 
 
         s->model->insertRecord(-1, r);
-//        qDebug() << "s->model->rowCount():" << s->model->rowCount();
 
-//        r = s->model->record(s->model->rowCount()-1);
-
-//        qDebug() << "START QDEBUG";
-//        qDebug() << r.value(0);
-//        qDebug() << r.value(1);
-//        qDebug() << r.value(2);
-//        qDebug() << r.value(3);
-//        qDebug() << r.value(4);
-//        qDebug() << r.value(5);
-//        qDebug() << r.value(6);
-//        qDebug() << r.value(7);
-//        qDebug() << "END QDEBUG";
-
-
-//        bool isDirty = s->model->isDirty();
-//        if (!isDirty)
-//            return;
-
-//        qDebug() << "isDirty:" << isDirty;
-
-//        if (isDirty) {
-//            s->model->submitAll();
-//            s->model->database().transaction();
-//            if (s->model->submit()) {
-//                if (!s->model->database().commit())
-//                    qDebug() << "[WARN] the sql db has an error:" << s->model->lastError().text();
-//            } else {
-//                s->model->database().rollback();
-//                qDebug() << "[WARN] The sql database reported an error:" << s->model->lastError().text();
-//            }
-//        }
-    //    m_lastReq
-
-
-
-//        sqlSubmit(rtId);
         m_db.close();
         m_db.setDatabaseName(oldName);
         m_db.open();
@@ -1060,7 +1019,7 @@ void Manager::onRealTimeDataTimerTimeout()
             r2[0].volume = r.value(6).toUInt();
             strcpy(r2[0].sqlTimeFrame, r.value(7).toByteArray().data());
 
-            m_hdf5Map[s]->writeRecords(r2, 1);
+            m_hdf5Map[s]->appendRecord(r2);
         }
     }
 }
@@ -1257,7 +1216,7 @@ void Manager::convertSqlToHdf5(Symbol *s)
 //    herr_t H5TBread_fields_name ( hid_t loc_id, const char *table_name, const char * field_names, hsize_t start,
 //                                  hsize_t nrecords, size_t type_size,  const size_t *field_offset, const size_t *dst_sizes, void *data)
 
-//    QDateTime fdth =
+    QDateTime fdth =
 }
 
 

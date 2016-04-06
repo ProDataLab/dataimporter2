@@ -20,6 +20,7 @@ public:
 //    ~IbHdf5();
 
     bool writeRecords(Record2 *recArray, int numRecords);
+    bool appendRecord(Record2* record);
 
     hsize_t numRecords() const;
 

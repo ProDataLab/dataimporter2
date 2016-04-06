@@ -94,6 +94,9 @@ IbHdf5::IbHdf5(const QString &tableName, const QString &filePath, QObject *paren
 
 bool IbHdf5::writeRecords(Record2* recArray, int numRecords)
 {
+    if (H5Lexists(m_fid, m_tableName.toLatin1().data(), H5P_DEFAULT) == TRUE) {
+        H5TBdelete_record(m_fid, m_tableName.toLatin1().data(), 0, numRecords());
+    }
 
     if (H5Lexists(m_fid, m_tableName.toLatin1().data(), H5P_DEFAULT) == FALSE)
         H5TBmake_table(m_tableName.toLatin1().data(), m_fid, m_tableName.toLatin1().data(),
@@ -104,16 +107,21 @@ bool IbHdf5::writeRecords(Record2* recArray, int numRecords)
     }
 }
 
+bool IbHdf5::appendRecord(Record2 *record)
+{
+    H5TBappend_records(m_fid, m_tableName.toLatin1().data(), 1, sizeof(Record2), m_dst_offset, m_dst_sizes, record);
+}
+
 hsize_t IbHdf5::numRecords() const
 {
-//    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), &m_numRecords, &m_numFields);
-//    return m_numRecords;
+    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), &m_numRecords, &m_numFields);
+    return m_numRecords;
 }
 
 hsize_t IbHdf5::numFields() const
 {
-//    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), &m_numRecords, &m_numFields);
-//    return m_numFields;
+    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), &m_numRecords, &m_numFields);
+    return m_numFields;
 }
 
 
