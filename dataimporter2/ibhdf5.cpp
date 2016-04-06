@@ -10,6 +10,8 @@ IbHdf5::IbHdf5(const QString &tableName, const QString &filePath, QObject *paren
     : m_tableName(tableName)
     , m_filePath(filePath)
     , QObject(parent)
+    , m_numRecords(0)
+    , m_numFields(0)
 {
 
 //    struct Record2
@@ -100,6 +102,18 @@ bool IbHdf5::writeRecords(Record2* recArray, int numRecords)
     else {
         H5TBappend_records(m_fid, m_tableName.toLatin1().data(), (hsize_t)numRecords, sizeof(Record2), m_dst_offset, m_dst_sizes, recArray);
     }
+}
+
+hsize_t IbHdf5::numRecords() const
+{
+//    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), &m_numRecords, &m_numFields);
+//    return m_numRecords;
+}
+
+hsize_t IbHdf5::numFields() const
+{
+//    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), &m_numRecords, &m_numFields);
+//    return m_numFields;
 }
 
 

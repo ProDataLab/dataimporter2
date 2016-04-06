@@ -7,6 +7,7 @@
 #include <hdf5_hl.h>
 #include "record.h"
 #include "symbol.h"
+#include <QDateTime>
 
 class Symbol;
 
@@ -19,6 +20,12 @@ public:
 //    ~IbHdf5();
 
     bool writeRecords(Record2 *recArray, int numRecords);
+
+    hsize_t numRecords() const;
+
+    hsize_t numFields() const;
+
+
 
 private:
     QString m_tableName;
@@ -34,6 +41,11 @@ private:
 
     hid_t m_fid;
     hid_t m_fieldType[8];
+
+    hsize_t m_numRecords;
+    hsize_t m_numFields;
+
+//    QDateTime
 };
 
 #endif // IBHDF5_H

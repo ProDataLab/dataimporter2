@@ -401,16 +401,16 @@ void Manager::onContractDetailsEnd(int reqId)
     s->model->select();
     s->rowCount = s->model->rowCount();
 
-    if (m_autoDownloadEnabled) {
-        long rtId = m_ibqt->getTickerId();
-        s->realTimeDataId = rtId;
-        m_symbolMap[rtId] = s;
+//    if (m_autoDownloadEnabled) {
+//        long rtId = m_ibqt->getTickerId();
+//        s->realTimeDataId = rtId;
+//        m_symbolMap[rtId] = s;
 
-        // START RT DATA COLLECTION
-        m_realTimeIds.append(rtId);
-        m_realTimeDataTimer->start(m_timeFrameInSeconds * 1000);
-        m_ibqt->reqMktData(rtId, s->contractDetails.summary, QByteArray(""), false);
-    }
+//        // START RT DATA COLLECTION
+//        m_realTimeIds.append(rtId);
+//        m_realTimeDataTimer->start(m_timeFrameInSeconds * 1000);
+//        m_ibqt->reqMktData(rtId, s->contractDetails.summary, QByteArray(""), false);
+//    }
 
     if (!dt.isNull()) {
         // START HIST DATA COLLECTION
@@ -461,32 +461,67 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
 
         // THIS IS A LOGICAL HACK!
         if (s->model->rowCount() == 1) {
-            for (int i=0;i<m_cdtData.size();++i) {
-                QSqlRecord r = m_cdtData.at(i);
-                s->model->insertRecord(-1, r);
+            if (m_cdtData.size() > 0) {
+                for (int i=0;i<m_cdtData.size();++i) {
+                    QSqlRecord r = m_cdtData.at(i);
+                    s->model->insertRecord(-1, r);
+                }
+                m_cdtData.clear();
+
+                // SUBMIT
+                sqlSubmit(reqId);
+
+                QDateTime dt = QDateTime::fromTime_t(s->model->record(0).value("timestamp").toUInt());
+                // DELAY
+                emit downloading(QString("IB server request delay.. 15 seconds for: ") + QString(s->symbolName));
+
+                qDebug() << "DELAY";
+
+                delay(15 * 1000);
+                // END DELAY
+
+                long newId = m_ibqt->getTickerId();
+                m_symbolMap[newId] = s;
+    //            m_symbolMap.remove(reqId);
+
+                m_lastReqId = newId;
+                reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
+                    m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
+                return;
             }
-            m_cdtData.clear();
+            if (m_edtData.size() > 0) {
 
-            // SUBMIT
-            sqlSubmit(reqId);
+                // THIS IS A STRANGE SITUATION THAT OCCURRED WITH TSLA,
+                // I SIMPLY AM ADDING THIS SECTION; REMOVING THE EXISTING ROW AND INSERTING THE NEW EDTDATA.
 
-            QDateTime dt = QDateTime::fromTime_t(s->model->record(0).value("timestamp").toUInt());
-            // DELAY
-            emit downloading(QString("IB server request delay.. 15 seconds for: ") + QString(s->symbolName));
+                s->model->removeRow(0);
+                for (int i=m_edtData.size()-1;i>=0;--i) {
+                    QSqlRecord r = m_edtData.at(i);
+                    s->model->insertRecord(0, r);
+                }
+                m_edtData.clear();
 
-            qDebug() << "DELAY";
+                // SUBMIT
+                sqlSubmit(reqId);
 
-            delay(15 * 1000);
-            // END DELAY
+                QDateTime dt = QDateTime::fromTime_t(s->model->record(0).value("timestamp").toUInt());
+                // DELAY
+                emit downloading(QString("IB server request delay.. 15 seconds for: ") + QString(s->symbolName));
 
-            long newId = m_ibqt->getTickerId();
-            m_symbolMap[newId] = s;
-//            m_symbolMap.remove(reqId);
+                qDebug() << "DELAY";
 
-            m_lastReqId = newId;
-            reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
-                m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
-            return;
+                delay(15 * 1000);
+                // END DELAY
+
+                long newId = m_ibqt->getTickerId();
+                m_symbolMap[newId] = s;
+    //            m_symbolMap.remove(reqId);
+
+                m_lastReqId = newId;
+                reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
+                    m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
+                return;
+            }
         }
 
         // EDT DATA
@@ -1185,7 +1220,20 @@ void Manager::reqHistoricalData(long tickerId, const Contract &contract, const Q
 
 void Manager::convertSqlToHdf5(Symbol *s)
 {
+    QSqlTableModel* model = s->model;
 
+    QSqlRecord firstRecord = model->record(0);
+    QSqlRecord lastRecord  = model->record(model->rowCount()-1);
+
+    QDateTime fdts = QDateTime::fromTime_t(firstRecord.value("timestamp").toUInt());
+    QDateTime ldts = QDateTime::fromTime_t(lastRecord.value("timestamp").toUInt());
+
+    IbHdf5* ibh5 = m_hdf5Map[s];
+
+//    herr_t H5TBread_fields_name ( hid_t loc_id, const char *table_name, const char * field_names, hsize_t start,
+//                                  hsize_t nrecords, size_t type_size,  const size_t *field_offset, const size_t *dst_sizes, void *data)
+
+//    QDateTime fdth =
 }
 
 
