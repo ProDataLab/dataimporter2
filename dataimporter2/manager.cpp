@@ -401,16 +401,16 @@ void Manager::onContractDetailsEnd(int reqId)
     s->model->select();
     s->rowCount = s->model->rowCount();
 
-//    if (m_autoDownloadEnabled) {
-//        long rtId = m_ibqt->getTickerId();
-//        s->realTimeDataId = rtId;
-//        m_symbolMap[rtId] = s;
+    if (m_autoDownloadEnabled) {
+        long rtId = m_ibqt->getTickerId();
+        s->realTimeDataId = rtId;
+        m_symbolMap[rtId] = s;
 
-//        // START RT DATA COLLECTION
-//        m_realTimeIds.append(rtId);
-//        m_realTimeDataTimer->start(m_timeFrameInSeconds * 1000);
-//        m_ibqt->reqMktData(rtId, s->contractDetails.summary, QByteArray(""), false);
-//    }
+        // START RT DATA COLLECTION
+        m_realTimeIds.append(rtId);
+        m_realTimeDataTimer->start(m_timeFrameInSeconds * 1000);
+        m_ibqt->reqMktData(rtId, s->contractDetails.summary, QByteArray(""), false);
+    }
 
     if (!dt.isNull()) {
         // START HIST DATA COLLECTION
@@ -423,6 +423,9 @@ void Manager::onContractDetailsEnd(int reqId)
                                   m_durationStr.toLatin1(), m_barSizes.at((int)m_timeFrame).toLatin1(),
                                   QByteArray("TRADES"), 1, 2, QList<TagValue*>());
     }
+    else
+        s->insertRealTimeData = true;
+
     qDebug() << "leaving onContractDetailsEnd()";
 }
 
@@ -644,6 +647,18 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
             dt = cdt;
             qDebug() << "dt = cdt";
         }
+//        else {
+//            if (m_autoDownloadEnabled) {
+//                long rtId = m_ibqt->getTickerId();
+//                s->realTimeDataId = rtId;
+//                m_symbolMap[rtId] = s;
+
+//                // START RT DATA COLLECTION
+//                m_realTimeIds.append(rtId);
+//                m_realTimeDataTimer->start(m_timeFrameInSeconds * 1000);
+//                m_ibqt->reqMktData(rtId, s->contractDetails.summary, QByteArray(""), false);
+//            }
+//        }
         if (dt.isNull()){
             qDebug() << "dt is ALL CAUGHT UP.. ";
             if (m_useHdf5) {
@@ -662,6 +677,7 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
                 m_hdf5Map[s]->writeRecords(r2, s->model->rowCount());
             }
             qDebug() << "returning the lock";
+            s->insertRealTimeData = true;
             m_lock = false;
             return;
         }
@@ -893,6 +909,12 @@ void Manager::onRealTimeDataTimerTimeout()
     for (int i=0;i<m_realTimeIds.size();++i) {
         long rtId = m_realTimeIds.at(i);
         Symbol* s = m_symbolMap[rtId];
+
+        if (!s->insertRealTimeData) {
+            s->realTimeData.clear();
+            continue;
+        }
+
         QDateTime ldt = QDateTime::fromTime_t(s->model->record(s->model->rowCount()-1).value("timestamp").toUInt());
         QDateTime ndt;
         double open = 0;
@@ -901,18 +923,23 @@ void Manager::onRealTimeDataTimerTimeout()
         double close = 0;
         int volume = 0;
         for (int j=0;j<s->realTimeData.size();++j) {
+
             double last = s->realTimeData.at(i)->last;
+            qDebug() << "size:" << s->realTimeData.at(i)->size;
+            volume += s->realTimeData.at(i)->size;
+            qDebug() << "volume:" << volume;
+
             if (j==0)
                 open = last;
             if (last > high)
                 high = last;
             if (last < low)
                 low = last;
-            if (j==s->realTimeData.size()-1)
+            if (j==s->realTimeData.size()-1) {
                 close = last;
-            qDebug() << "size:" << s->realTimeData.at(i)->size;
-            volume += s->realTimeData.at(i)->size;
-            qDebug() << "volume:" << volume;
+                s->realTimeData.clear();
+            }
+
 
         }
 
@@ -1013,9 +1040,6 @@ void Manager::onRealTimeDataTimerTimeout()
 //            }
 //        }
     //    m_lastReq
-
-
-
 
 
 

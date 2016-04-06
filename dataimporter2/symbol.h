@@ -28,6 +28,7 @@ struct Symbol
     QByteArray                  primaryExchange;
     QByteArray                  secType;
     QByteArray                  currency;
+    bool                        insertRealTimeData;
 };
 
 #endif // SYMBOL_H
