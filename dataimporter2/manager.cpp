@@ -144,7 +144,9 @@ void Manager::downloadQuotes()
         c->currency = m_symbolTableModel->record(i).value("currency").toByteArray();
         c->secType = m_symbolTableModel->record(i).value("sec_type").toByteArray();
         c->exchange = QByteArray("SMART");
-        c->primaryExchange = m_symbolTableModel->record(i).value("primary_exchange").toByteArray();
+        QByteArray primaryExchange = m_symbolTableModel->record(i).value("primary_exchange").toByteArray();
+        if (primaryExchange != "SMART")
+            c->primaryExchange = primaryExchange;
 
         m_ibqt->reqContractDetails(histId, *c);
 
