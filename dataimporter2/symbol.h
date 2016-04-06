@@ -25,6 +25,9 @@ struct Symbol
     QString                     timeFrameString;
     long                        realTimeDataId;
     QVector<RtRecord*>          realTimeData;
+    QByteArray                  primaryExchange;
+    QByteArray                  secType;
+    QByteArray                  currency;
 };
 
 #endif // SYMBOL_H

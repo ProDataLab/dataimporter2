@@ -189,17 +189,17 @@ void MainWindow::on_loadSymbolTablePushButton_clicked()
         qDebug() << "INIT SQL FAILED";
 }
 
-void MainWindow::on_hdf5OutputFolderLineEdit_textChanged(const QString &arg1)
-{
-    QSettings s;
-//    s.beginGroup(m_sqlSymbolTableName);
-    s.setValue("hdf5/outputFolderLineEdit", QVariant(arg1));
-    s.sync();
-//    s.endGroup();
+//void MainWindow::on_hdf5OutputFolderLineEdit_textChanged(const QString &arg1)
+//{
+//    QSettings s;
+////    s.beginGroup(m_sqlSymbolTableName);
+//    s.setValue("hdf5/outputFolderLineEdit", QVariant(arg1));
+//    s.sync();
+////    s.endGroup();
 
-    m_mgr->setHdf5OutputFolderPath(arg1);
-    ui->hdf5OutputFolderLineEdit->setText(arg1);
-}
+//    m_mgr->setHdf5OutputFolderPath(arg1);
+//    ui->hdf5OutputFolderLineEdit->setText(arg1);
+//}
 
 void MainWindow::on_hdf5OutputFileToolButton_clicked()
 {
@@ -520,9 +520,9 @@ void MainWindow::on_sqlSymbolTableNameLineEdit_editingFinished()
 
 void MainWindow::on_hdf5OutputFolderLineEdit_editingFinished()
 {
-    qDebug() << "hdf5outputfolder blah";
-
     QString arg1 = ui->hdf5OutputFolderLineEdit->text();
+
+    qDebug() << "hdf5outputfolder =" << arg1;
 
     QSettings s;
 //    s.beginGroup(m_sqlSymbolTableName);
@@ -531,7 +531,6 @@ void MainWindow::on_hdf5OutputFolderLineEdit_editingFinished()
 //    s.endGroup();
 
     m_mgr->setHdf5OutputFolderPath(arg1);
-//    ui->hdf5OutputFolderLineEdit->setText(arg1);
 }
 
 

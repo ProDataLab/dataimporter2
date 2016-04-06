@@ -13,6 +13,9 @@
 #include <QEventLoop>
 #include <cstring>
 #include <QTimeZone>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 
 
 Manager::Manager(QObject *parent)
@@ -25,6 +28,7 @@ Manager::Manager(QObject *parent)
     m_loginTimer = new QTimer(this);
     m_realTimeDataTimer = new QTimer(this);
     m_reqHistoricalDataTimer = new QTimer(this);
+    m_hdf5OutputFolderPath = QCoreApplication::applicationDirPath();
 
     connect(m_ibqt, SIGNAL(twsConnected()), this, SLOT(onTwsConnected()));
     connect(m_ibqt, SIGNAL(managedAccounts(QByteArray)), this, SLOT(onManagedAccounts(QByteArray)));
@@ -62,8 +66,8 @@ void Manager::login(const QString &url, int port, int clientId)
     m_ibPort = port;
     m_ibClientId = clientId;
 
-//    m_loginTimer->start(1000 * 10);
-//    m_loginAttemptNumber = 1;
+    m_loginTimer->start(1000 * 10);
+    m_loginAttemptNumber = 1;
     m_ibqt->connectToTWS(url.toLatin1(), (quint16)port, clientId);
 }
 
@@ -130,14 +134,17 @@ void Manager::downloadQuotes()
         s->timeFrameString  = m_timeFrameString.split('_')[0] + m_timeFrameString.split('_')[1].toLower();
         s->realTimeDataId   = realId;
 
-        if (m_useHdf5)
-            m_hdf5Map[s] = new IbHdf5(s->tableName, m_hdf5OutputFolderPath + QString("/") + s->tableName, this);
+        if (m_useHdf5) {
+            m_hdf5Map[s] = new IbHdf5(s->tableName,
+                            m_hdf5OutputFolderPath + QString("/") + s->tableName + QString(".h5"), this);
+        }
 
         Contract* c = new Contract;
         c->symbol = symbol;
-        c->currency = QByteArray("USD");
-        c->secType = QByteArray("STK");
+        c->currency = m_symbolTableModel->record(i).value("currency").toByteArray();
+        c->secType = m_symbolTableModel->record(i).value("sec_type").toByteArray();
         c->exchange = QByteArray("SMART");
+        c->primaryExchange = m_symbolTableModel->record(i).value("primary_exchange").toByteArray();
 
         m_ibqt->reqContractDetails(histId, *c);
 
@@ -156,6 +163,8 @@ void Manager::downloadQuotes()
 
         if (m_reqHistoricalDataTimer->isActive())
             m_reqHistoricalDataTimer->stop();
+
+        convertSqlToHdf5(s);
     }
 }
 
@@ -361,11 +370,6 @@ void Manager::onContractDetailsEnd(int reqId)
 
         q.finish();
 
-        if (m_useHdf5) {
-
-            // TODO: CREATE HDF5 FILE HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        }
 
         dt = QDateTime::currentDateTime();
 
@@ -815,6 +819,8 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
 
 void Manager::onIbSocketError(const QString &errorString)
 {
+    m_isConnected = false;
+    emit disconnected();
     login(m_ibUrl, m_ibPort, m_ibClientId);
 }
 
@@ -833,7 +839,8 @@ void Manager::onLoginTimerTimeout()
         m_loginTimer->stop();
         return;
     }
-    m_ibqt->connectToTWS(m_ibUrl.toLatin1(), m_ibPort, m_ibClientId);
+//    m_ibqt->connectToTWS(m_ibUrl.toLatin1(), m_ibPort, m_ibClientId);
+    login(m_ibUrl, m_ibPort, m_ibClientId);
 }
 
 void Manager::onRealTimeDataTimerTimeout()
@@ -850,6 +857,7 @@ void Manager::onRealTimeDataTimerTimeout()
         long rtId = m_realTimeIds.at(i);
         Symbol* s = m_symbolMap[rtId];
         QDateTime ldt = QDateTime::fromTime_t(s->model->record(s->model->rowCount()-1).value("timestamp").toUInt());
+        QDateTime ndt;
         double open = 0;
         double high = 0;
         double low = 9999;
@@ -871,7 +879,6 @@ void Manager::onRealTimeDataTimerTimeout()
 
         }
 
-        QDateTime ndt;
 
         if (!timeIsSameTradingDay(ldt)
                 && cdt > m_liquidHoursStartTime
@@ -915,7 +922,7 @@ void Manager::onRealTimeDataTimerTimeout()
         // USING SQL INSERT COMMAND INSTEAD OF SQL TABLE MODEL
         if (!q.exec(QString("insert into ") + s->tableName + QString(" values")
             + QString("(")
-            + r.value("timeString").toString() + QString(", ")
+            + QString("'") + r.value("timeString").toString() + QString("'") + QString(", ")
             + QString("'") + r.value("timeString").toString() + QString("', ")
             + r.value("open").toString() + QString(", ")
             + r.value("high").toString() + QString(", ")
@@ -1173,4 +1180,40 @@ void Manager::reqHistoricalData(long tickerId, const Contract &contract, const Q
     emit downloading("Requesting historical data for " + contract.symbol + " .. request timeout set for 30 seconds");
     m_ibqt->reqHistoricalData(tickerId, contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate, chartOptions);
 }
+
+void Manager::convertSqlToHdf5(Symbol *s)
+{
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

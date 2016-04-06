@@ -158,6 +158,7 @@ private:
     bool        timeIsSameTradingDay(const QDateTime & dt);
     void        reqHistoricalData(long tickerId, const Contract &contract, const QByteArray &endDateTime, const QByteArray &durationStr,
                                   const QByteArray &barSizeSetting, const QByteArray &whatToShow, int useRTH, int formatDate, const QList<TagValue *> &chartOptions);
+    void        convertSqlToHdf5(Symbol* s);
 };
 
 #endif // MANAGER_H

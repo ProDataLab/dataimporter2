@@ -52,7 +52,7 @@ private slots:
 
     void on_loadSymbolTablePushButton_clicked();
 
-    void on_hdf5OutputFolderLineEdit_textChanged(const QString &arg1);
+//    void on_hdf5OutputFolderLineEdit_textChanged(const QString &arg1);
 
     void on_hdf5OutputFileToolButton_clicked();
 
