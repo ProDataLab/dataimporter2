@@ -21,9 +21,10 @@ MainWindow::MainWindow(QWidget *parent)
     ui->mySqlCheckBox->setChecked(true);
     ui->mysqlGroupBox->setEnabled(true);
     ui->mySqlCheckBox->hide();
-    ui->hdf5CheckBox->setChecked(true);
+    ui->hdf5CheckBox->setChecked(false);
     ui->hdf5GroupBox->setEnabled(true);
-    ui->hdf5CheckBox->hide();
+    ui->reconnectCheckbox->setChecked(true);
+//    ui->hdf5CheckBox->hide();
 
     ui->sqlSymbolTableNameLineEdit->setText("stock_companyInfo");
 
@@ -105,11 +106,11 @@ void MainWindow::on_hdf5CheckBox_toggled(bool checked)
 {
     QSettings s;
 //    s.beginGroup(m_sqlSymbolTableName);
-    s.setValue("hdf5/checkBoxToggled", QVariant(checked));
+    s.setValue("hdf5/checkBoxEnabled", QVariant(checked));
     s.sync();
 //    s.endGroup();
 
-    ui->hdf5GroupBox->setEnabled(checked);
+    m_mgr->setUseHdf5(checked);
 }
 
 void MainWindow::on_sqlHostNameLineEdit_textChanged(const QString &arg1)
@@ -398,9 +399,9 @@ void MainWindow::readSettings()
     m_mgr->setHdf5OutputFolderPath(sval);
     ui->hdf5OutputFolderLineEdit->setText(sval);
 
-//    bval = m_settings.value("checkBoxToggled").toBool();
-//    ui->hdf5CheckBox->setChecked(bval);
-//    m_mgr->setUseHdf5(bval);
+    bval = m_settings.value("checkBoxEnabled").toBool();
+    ui->hdf5CheckBox->setChecked(bval);
+    m_mgr->setUseHdf5(bval);
 
     m_settings.endGroup();
 

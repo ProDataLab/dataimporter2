@@ -19,7 +19,7 @@ public:
     IbHdf5(const QString & tableName, const QString & filePath, QObject *parent = 0);
 //    ~IbHdf5();
 
-    bool writeRecords(Record2 *recArray, int numRecords);
+    bool writeRecords(Record2 *recArray, int nRecords);
     bool appendRecord(Record2* record);
 
     hsize_t numRecords() const;
@@ -43,8 +43,8 @@ private:
     hid_t m_fid;
     hid_t m_fieldType[8];
 
-    hsize_t m_numRecords;
-    hsize_t m_numFields;
+    hsize_t* m_numRecords;
+    hsize_t* m_numFields;
 
 //    QDateTime
 };

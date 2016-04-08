@@ -81,7 +81,6 @@ public:
 
 signals:
     void connected();
-    void disconnected();
     void downloading(const QString & name);
 
 public slots:
@@ -102,6 +101,7 @@ private slots:
     void onLoginTimerTimeout();
     void onRealTimeDataTimerTimeout();
     void onRequestedHistoricalDataTimerTimeout();
+    void onRequestedContractDetailsTimerTimeout();
 
 
 private:
@@ -139,6 +139,7 @@ private:
     QTimer*             m_loginTimer;
     QTimer*             m_realTimeDataTimer;
     QTimer*             m_reqHistoricalDataTimer;
+    QTimer*             m_reqContractDetailsTimer;
     QVector<long>       m_realTimeIds;
     QMap<Symbol*,IbHdf5*> m_hdf5Map;
     bool                m_isConnected;
@@ -158,7 +159,7 @@ private:
     bool        timeIsSameTradingDay(const QDateTime & dt);
     void        reqHistoricalData(long tickerId, const Contract &contract, const QByteArray &endDateTime, const QByteArray &durationStr,
                                   const QByteArray &barSizeSetting, const QByteArray &whatToShow, int useRTH, int formatDate, const QList<TagValue *> &chartOptions);
-    void        convertSqlToHdf5(Symbol* s);
+//    void        convertSqlToHdf5(Symbol* s);
 };
 
 #endif // MANAGER_H

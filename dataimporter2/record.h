@@ -18,13 +18,13 @@ struct Record
 struct Record2
 {
     uint    timestamp;
-    char    timeString[16];
+    char    timeString[64];
     double  open;
     double  high;
     double  low;
     double  close;
     uint    volume;
-    char    sqlTimeFrame[5];
+    char    sqlTimeFrame[8];
 };
 
 struct RtRecord

@@ -28,6 +28,7 @@ Manager::Manager(QObject *parent)
     m_loginTimer = new QTimer(this);
     m_realTimeDataTimer = new QTimer(this);
     m_reqHistoricalDataTimer = new QTimer(this);
+    m_reqContractDetailsTimer = new QTimer(this);
     m_hdf5OutputFolderPath = QCoreApplication::applicationDirPath();
 
     connect(m_ibqt, SIGNAL(twsConnected()), this, SLOT(onTwsConnected()));
@@ -44,6 +45,7 @@ Manager::Manager(QObject *parent)
 
     connect(m_realTimeDataTimer, SIGNAL(timeout()), this, SLOT(onRealTimeDataTimerTimeout()));
     connect(m_reqHistoricalDataTimer, SIGNAL(timeout()), this, SLOT(onRequestedHistoricalDataTimerTimeout()));
+    connect(m_reqContractDetailsTimer, SIGNAL(timeout()), this, SLOT(onRequestedContractDetailsTimerTimeout()));
     connect(m_loginTimer, SIGNAL(timeout()), SLOT(onLoginTimerTimeout()));
 
     m_barSizes << "1 secs"
@@ -141,13 +143,21 @@ void Manager::downloadQuotes()
 
         Contract* c = new Contract;
         c->symbol = symbol;
-        c->currency = m_symbolTableModel->record(i).value("currency").toByteArray();
-        c->secType = m_symbolTableModel->record(i).value("sec_type").toByteArray();
+        QByteArray currency = m_symbolTableModel->record(i).value("currency").toByteArray();
+        if (!currency.isEmpty())
+            c->currency = currency;
+        QByteArray secType = m_symbolTableModel->record(i).value("sec_type").toByteArray();
+        if (!secType.isEmpty())
+            c->secType = secType;
         c->exchange = QByteArray("SMART");
         QByteArray primaryExchange = m_symbolTableModel->record(i).value("primary_exchange").toByteArray();
         if (primaryExchange != "SMART")
             c->primaryExchange = primaryExchange;
 
+        m_reqContractDetailsTimer->start(1000 * 15);
+        QString msg("Requesting Contract Details for " + QString(c->symbol) + " .. request timeout set for 15 seconds");
+        qDebug() << msg;
+        emit downloading(msg);
         m_ibqt->reqContractDetails(histId, *c);
 
         delete c;
@@ -166,7 +176,7 @@ void Manager::downloadQuotes()
         if (m_reqHistoricalDataTimer->isActive())
             m_reqHistoricalDataTimer->stop();
 
-        convertSqlToHdf5(s);
+//        convertSqlToHdf5(s);
     }
 }
 
@@ -295,7 +305,12 @@ void Manager::setNumberOfMonths(int numberOfMonths)
 
 void Manager::setStopButtonClicked(bool stopButtonClicked)
 {
+    for (int i=0;i<m_realTimeIds.size();++i) {
+        m_ibqt->cancelMktData(m_realTimeIds.at(i));
+    }
+    m_realTimeDataTimer->stop();
     m_stopButtonClicked = stopButtonClicked;
+    emit downloading("All Downloading stopped");
 }
 
 void Manager::setAutoDownloadEnabled(bool autoDownloadEnabled)
@@ -316,12 +331,15 @@ void Manager::setUseHdf5(bool useHdf5)
 void Manager::onManagedAccounts(const QByteArray &accountList)
 {
     m_isConnected = true;
+    m_loginAttemptNumber = 0;
     m_managedAccounts = QString(accountList).split(',', QString::SkipEmptyParts);
     emit connected();
 }
 
 void Manager::onContractDetails(int reqId, const ContractDetails &contractDetails)
 {
+    m_reqContractDetailsTimer->stop();
+
     Symbol* s = m_symbolMap[reqId];
 
     s->contractDetails = contractDetails;
@@ -333,7 +351,7 @@ void Manager::onContractDetails(int reqId, const ContractDetails &contractDetail
 void Manager::onContractDetailsEnd(int reqId)
 {
     // THIS IS TEMPORARY
-    m_useHdf5 = false;
+//    m_useHdf5 = false;
 
     qDebug() << "In onContractDetailsEnd()";
 
@@ -451,6 +469,8 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
     if (m_stopButtonClicked) {
 //        date = "finished";
         m_ibqt->cancelHistoricalData(reqId);
+        if (m_reqHistoricalDataTimer->isActive())
+            m_reqHistoricalDataTimer->stop();
         m_lock = false;
         return;
 //        m_stopButtonClicked = false;
@@ -618,6 +638,7 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
                     QDateTime dt = QDateTime::fromTime_t(r.value("timestamp").toUInt());
                     if (dt > ldt) {
                         s->model->insertRecord(-1, r);
+                        ldt = dt;
                     }
                 }
                 m_cdtData.clear();
@@ -662,7 +683,8 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
         if (dt.isNull()){
             qDebug() << "dt is ALL CAUGHT UP.. ";
             if (m_useHdf5) {
-                qDebug() << "WRITING TO HDF5";
+                qDebug() << "Writing" << s->symbolName << "To HDF5";
+                emit downloading(QString("Writing") + s->symbolName + QString("to HDF5 Database"));
                 Record2 r2[s->model->rowCount()];
                 for (int i=0;i<s->model->rowCount();++i) {
                     r2[i].timestamp = s->model->record(i).value(0).toUInt();
@@ -806,14 +828,15 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
 void Manager::onTickPrice(const long &tickerId, const TickType &field, const double &price, const int &canAutoExecute)
 {
     if (field == LAST) {
-        qDebug() << "TICKPRICE:" << tickerId << price;
         Symbol* s = m_symbolMap[tickerId];
-
+        QString msg("TICKPRICE for symbol:" + s->symbolName + "is:" + QString::number(price));
+        qDebug() << msg;
+        emit downloading(msg);
         RtRecord* r = new RtRecord;
         r->last = price;
         r->timestamp = QDateTime::currentDateTime().toTime_t();
         r->reqId = tickerId;
-        r->size = -1;
+        r->size = 0;
         s->realTimeData.append(r);
     }
 }
@@ -821,15 +844,18 @@ void Manager::onTickPrice(const long &tickerId, const TickType &field, const dou
 void Manager::onTickSize(const long &tickerId, const TickType &field, int size)
 {
     if (field == LAST_SIZE) {
-        qDebug() << "TICKSIZE:" << tickerId << size;
-
         Symbol* s       = m_symbolMap[tickerId];
         RtRecord* r     = s->realTimeData.last();
 
-        if (r->size == -1) {
-            r->size = size;
-        }
-        else {
+        QString msg("TICKSIZE  for symbol:" + s->symbolName + "is" + QString::number(size));
+        qDebug() << msg;
+        emit downloading(msg);
+
+
+//        if (r->size == -1) {
+//            r->size = size;
+//        }
+//        else {
             RtRecord* r2 = new RtRecord;
 
             r2->timestamp = QDateTime::currentDateTime().toTime_t();
@@ -837,14 +863,15 @@ void Manager::onTickSize(const long &tickerId, const TickType &field, int size)
             r2->reqId = tickerId;
             r2->size = size;
             s->realTimeData.append(r2);
-        }
+//        }
     }
 }
 
 void Manager::onError(const int id, const int errorCode, const QByteArray errorString)
 {
-    if (errorCode == 2104 || errorCode == 2106 || errorCode == 2108)
+    if (errorCode == 2104 || errorCode == 2106 || errorCode == 2108) {
         qDebug() << "[IBQT INFO]" << id << errorCode << errorString;
+    }
     else if (errorCode == 505) {
         qDebug() << "[IBQT WARN]" << id << errorCode << errorString
                  << "            CLEARING MESSAGE AND RE-REQUESTING.. 15 sec delay";
@@ -863,8 +890,15 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
         reqHistoricalData(newId, s->contractDetails.summary, ibEndDateTimeToString(m_lastDt).toLatin1(),
                                   m_durationStr.toLatin1(), m_barSizes.at(m_timeFrame).toLatin1(), "TRADES", 1, 2, QList<TagValue*>());
     }
-    else if (errorCode == 162 || errorCode == 200)
+    else if (errorCode == 162 || errorCode == 200) {
         m_lock == false;
+    }
+    else if (errorCode == 504) {
+        if (m_reconnectOnFailure) {
+            m_isConnected = false;
+            login(m_ibUrl, m_ibPort, m_ibClientId);
+        }
+    }
 
     else
         qDebug() << "[IBQT ERROR]" << id << errorCode << errorString;
@@ -872,16 +906,22 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
 
 void Manager::onIbSocketError(const QString &errorString)
 {
-    m_isConnected = false;
-    emit disconnected();
-    login(m_ibUrl, m_ibPort, m_ibClientId);
+    qDebug() << "In onIbSocketError(): errorString:" << errorString;
+
+    if (m_reconnectOnFailure) {
+        m_isConnected = false;
+        login(m_ibUrl, m_ibPort, m_ibClientId);
+    }
 }
 
 void Manager::onConnectionClosed()
 {
-    m_isConnected = false;
-    emit disconnected();
-    login(m_ibUrl, m_ibPort, m_ibClientId);
+    qDebug() << "In onConnectionClosed()";
+
+    if (m_reconnectOnFailure) {
+        m_isConnected = false;
+        login(m_ibUrl, m_ibPort, m_ibClientId);
+    }
 }
 
 void Manager::onLoginTimerTimeout()
@@ -898,7 +938,8 @@ void Manager::onLoginTimerTimeout()
 
 void Manager::onRealTimeDataTimerTimeout()
 {
-    qDebug() << "onRealTimeDataTimerTimeout()";
+    qDebug() << "\n";
+    qDebug() << "In onRealTimeDataTimerTimeout()";
 
     QDateTime cdt = QDateTime::currentDateTime();
 
@@ -911,9 +952,19 @@ void Manager::onRealTimeDataTimerTimeout()
         Symbol* s = m_symbolMap[rtId];
 
         if (!s->insertRealTimeData) {
+            RtRecord r = *(s->realTimeData.last());
+            qDeleteAll(s->realTimeData);
             s->realTimeData.clear();
+            s->realTimeData.append(new RtRecord);
+            s->realTimeData.at(0)->last = r.last;
+            s->realTimeData.at(0)->reqId = r.reqId;
+            s->realTimeData.at(0)->size = 0;
+            s->realTimeData.at(0)->timestamp = r.timestamp;
+            qDebug() << "_NOT_ Inserting Real Time Data Yet";
             continue;
         }
+
+        qDebug() << "Inserting Real Time Data Now";
 
         QDateTime ldt = QDateTime::fromTime_t(s->model->record(s->model->rowCount()-1).value("timestamp").toUInt());
         QDateTime ndt;
@@ -921,12 +972,14 @@ void Manager::onRealTimeDataTimerTimeout()
         double high = 0;
         double low = 9999;
         double close = 0;
-        int volume = 0;
+        double volume = 0;
+        qDebug() << "symbol:" << s->symbolName << "has a size of" << s->realTimeData.size() << "realtime entries";
         for (int j=0;j<s->realTimeData.size();++j) {
 
-            double last = s->realTimeData.at(i)->last;
-            qDebug() << "size:" << s->realTimeData.at(i)->size;
-            volume += s->realTimeData.at(i)->size;
+            double last = s->realTimeData.at(j)->last;
+            int size = s->realTimeData.at(j)->size;
+            qDebug() << "size:" << size;
+            volume += (double)size;
             qDebug() << "volume:" << volume;
 
             if (j==0)
@@ -937,7 +990,14 @@ void Manager::onRealTimeDataTimerTimeout()
                 low = last;
             if (j==s->realTimeData.size()-1) {
                 close = last;
+                RtRecord r = *(s->realTimeData.last());
+                qDeleteAll(s->realTimeData);
                 s->realTimeData.clear();
+                s->realTimeData.append(new RtRecord);
+                s->realTimeData.at(0)->last = r.last;
+                s->realTimeData.at(0)->reqId = r.reqId;
+                s->realTimeData.at(0)->size = 0;
+                s->realTimeData.at(0)->timestamp = r.timestamp;
             }
         }
 
@@ -959,7 +1019,7 @@ void Manager::onRealTimeDataTimerTimeout()
 
         QSqlRecord  r = s->model->record();
         r.setValue(0, ndt.toTime_t());
-        r.setValue(1, timeString);
+        r.setValue("timeString", timeString);
         r.setValue(2, open);
         r.setValue(3, high);
         r.setValue(4, low);
@@ -976,18 +1036,27 @@ void Manager::onRealTimeDataTimerTimeout()
         m_db.setDatabaseName(m_sqlDatabaseName);
         m_db.open();
 
+        qDebug() << "timestamp:" << r.value("timestamp").toString();
+        qDebug() << "timeString:" << timeString;
+        qDebug() << "open:" << r.value("open").toString();
+        qDebug() << "high:" << r.value("high").toString();
+        qDebug() << "low:" << r.value("low").toString();
+        qDebug() << "close:" << r.value("close").toString();
+        qDebug() << "volume:" << r.value("volume").toString();
+        qDebug() << "timeFrame:" << r.value(7).toString();
+
         QSqlQuery q;
 
         // USING SQL INSERT COMMAND INSTEAD OF SQL TABLE MODEL
         if (!q.exec(QString("insert into ") + s->tableName + QString(" values")
             + QString("(")
-            + QString("'") + r.value("timeString").toString() + QString("'") + QString(", ")
-            + QString("'") + r.value("timeString").toString() + QString("', ")
-            + r.value("open").toString() + QString(", ")
-            + r.value("high").toString() + QString(", ")
-            + r.value("low").toString() + QString(", ")
-            + r.value("close").toString() + QString(", ")
-            + r.value("volume").toString() + QString(", ")
+            + QString::number(ndt.toTime_t()) + QString(", ")
+            + QString("'") + timeString + QString("', ")
+            + QString::number(open) + QString(", ")
+            + QString::number(high) + QString(", ")
+            + QString::number(low) + QString(", ")
+            + QString::number(close) + QString(", ")
+            + QString::number(volume) + QString(", ")
             + QString("'") + s->timeFrameString + QString("'")
             + QString(")")))
         {
@@ -1009,6 +1078,9 @@ void Manager::onRealTimeDataTimerTimeout()
 
         // HDF5
         if (m_useHdf5) {
+            QString msg = QString("Writing ") + s->symbolName + QString("to HDF5");
+            qDebug() << msg;
+            emit downloading(msg);
             Record2 r2[1];
             r2[0].timestamp = r.value(0).toUInt();
             strcpy(r2[0].timeString, r.value(1).toByteArray().data());
@@ -1022,11 +1094,19 @@ void Manager::onRealTimeDataTimerTimeout()
             m_hdf5Map[s]->appendRecord(r2);
         }
     }
+    qDebug() << "Leaving onRealTimeDataTimerTimeout()";
+    qDebug() << "\n";
 }
 
 void Manager::onRequestedHistoricalDataTimerTimeout()
 {
     qDebug() << "In onRequestedHistoricalDataTimerTimeout() .. unlocking m_lock now";
+    m_lock = false;
+}
+
+void Manager::onRequestedContractDetailsTimerTimeout()
+{
+    qDebug() << "In onRequestedContractDetailsTimerTimeout() .. unlocking m_lock now";
     m_lock = false;
 }
 
@@ -1196,28 +1276,28 @@ bool Manager::timeIsSameTradingDay(const QDateTime &dt)
 void Manager::reqHistoricalData(long tickerId, const Contract &contract, const QByteArray &endDateTime, const QByteArray &durationStr,
                                 const QByteArray &barSizeSetting, const QByteArray &whatToShow, int useRTH, int formatDate, const QList<TagValue*> & chartOptions)
 {
-    m_reqHistoricalDataTimer->start(1000 * 30);
-    emit downloading("Requesting historical data for " + contract.symbol + " .. request timeout set for 30 seconds");
+    m_reqHistoricalDataTimer->start(1000 * 15);
+    emit downloading("Requesting historical data for " + contract.symbol + " .. request timeout set for 15 seconds");
     m_ibqt->reqHistoricalData(tickerId, contract, endDateTime, durationStr, barSizeSetting, whatToShow, useRTH, formatDate, chartOptions);
 }
 
-void Manager::convertSqlToHdf5(Symbol *s)
-{
-    QSqlTableModel* model = s->model;
+//void Manager::convertSqlToHdf5(Symbol *s)
+//{
+//    QSqlTableModel* model = s->model;
 
-    QSqlRecord firstRecord = model->record(0);
-    QSqlRecord lastRecord  = model->record(model->rowCount()-1);
+//    QSqlRecord firstRecord = model->record(0);
+//    QSqlRecord lastRecord  = model->record(model->rowCount()-1);
 
-    QDateTime fdts = QDateTime::fromTime_t(firstRecord.value("timestamp").toUInt());
-    QDateTime ldts = QDateTime::fromTime_t(lastRecord.value("timestamp").toUInt());
+//    QDateTime fdts = QDateTime::fromTime_t(firstRecord.value("timestamp").toUInt());
+//    QDateTime ldts = QDateTime::fromTime_t(lastRecord.value("timestamp").toUInt());
 
-    IbHdf5* ibh5 = m_hdf5Map[s];
+//    IbHdf5* ibh5 = m_hdf5Map[s];
 
-//    herr_t H5TBread_fields_name ( hid_t loc_id, const char *table_name, const char * field_names, hsize_t start,
-//                                  hsize_t nrecords, size_t type_size,  const size_t *field_offset, const size_t *dst_sizes, void *data)
+////    herr_t H5TBread_fields_name ( hid_t loc_id, const char *table_name, const char * field_names, hsize_t start,
+////                                  hsize_t nrecords, size_t type_size,  const size_t *field_offset, const size_t *dst_sizes, void *data)
 
-    QDateTime fdth =
-}
+////    QDateTime fdth =
+//}
 
 
 

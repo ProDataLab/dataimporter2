@@ -10,8 +10,6 @@ IbHdf5::IbHdf5(const QString &tableName, const QString &filePath, QObject *paren
     : m_tableName(tableName)
     , m_filePath(filePath)
     , QObject(parent)
-    , m_numRecords(0)
-    , m_numFields(0)
 {
 
 //    struct Record2
@@ -41,13 +39,13 @@ IbHdf5::IbHdf5(const QString &tableName, const QString &filePath, QObject *paren
 
 
     m_dst_sizes[0] = sizeof(uint);
-    m_dst_sizes[1] = 24;
+    m_dst_sizes[1] = 64;
     m_dst_sizes[2] = sizeof(double);
     m_dst_sizes[3] = sizeof(double);
     m_dst_sizes[4] = sizeof(double);
     m_dst_sizes[5] = sizeof(double);
     m_dst_sizes[6] = sizeof(uint);
-    m_dst_sizes[7] = 5;
+    m_dst_sizes[7] = 8;
 
 
     m_fieldNames[0] = "timestamp";
@@ -68,10 +66,10 @@ IbHdf5::IbHdf5(const QString &tableName, const QString &filePath, QObject *paren
     m_compress = 0;
 
     timeStringType = H5Tcopy(H5T_C_S1);
-    H5Tset_size(timeStringType, 24);
+    H5Tset_size(timeStringType, 64);
 
     timeFrameType = H5Tcopy(H5T_C_S1);
-    H5Tset_size(timeFrameType, 5);
+    H5Tset_size(timeFrameType, 8);
 
 
     m_fieldType[0] = H5T_NATIVE_UINT;
@@ -92,18 +90,22 @@ IbHdf5::IbHdf5(const QString &tableName, const QString &filePath, QObject *paren
 
 }
 
-bool IbHdf5::writeRecords(Record2* recArray, int numRecords)
+bool IbHdf5::writeRecords(Record2* recArray, int nRecords)
 {
-    if (H5Lexists(m_fid, m_tableName.toLatin1().data(), H5P_DEFAULT) == TRUE) {
-        H5TBdelete_record(m_fid, m_tableName.toLatin1().data(), 0, numRecords());
+    if (QFileInfo::exists(m_filePath)) {
+        QFile::remove(m_filePath);
     }
+//    if (H5Lexists(m_fid, m_tableName.toLatin1().data(), H5P_DEFAULT) == TRUE) {
+//        qDebug() << "NUM HDF5 RECORDS IS:" << numRecords();
+//        H5TBdelete_record(m_fid, m_tableName.toLatin1().data(), 0, numRecords());
+//    }
 
     if (H5Lexists(m_fid, m_tableName.toLatin1().data(), H5P_DEFAULT) == FALSE)
         H5TBmake_table(m_tableName.toLatin1().data(), m_fid, m_tableName.toLatin1().data(),
-                   m_nFields, numRecords, sizeof(Record2), m_fieldNames, m_dst_offset,
+                   m_nFields, nRecords, sizeof(Record2), m_fieldNames, m_dst_offset,
                    m_fieldType, m_chunkSize, m_fillData, m_compress, recArray);
     else {
-        H5TBappend_records(m_fid, m_tableName.toLatin1().data(), (hsize_t)numRecords, sizeof(Record2), m_dst_offset, m_dst_sizes, recArray);
+        H5TBappend_records(m_fid, m_tableName.toLatin1().data(), (hsize_t)nRecords, sizeof(Record2), m_dst_offset, m_dst_sizes, recArray);
     }
 }
 
@@ -114,14 +116,14 @@ bool IbHdf5::appendRecord(Record2 *record)
 
 hsize_t IbHdf5::numRecords() const
 {
-    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), &m_numRecords, &m_numFields);
-    return m_numRecords;
+    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), m_numRecords, m_numFields);
+    return *m_numRecords;
 }
 
 hsize_t IbHdf5::numFields() const
 {
-    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), &m_numRecords, &m_numFields);
-    return m_numFields;
+    H5TBget_table_info(m_fid, m_tableName.toLatin1().data(), m_numRecords, m_numFields);
+    return *m_numFields;
 }
 
 
