@@ -74,9 +74,13 @@ void Manager::login(const QString &url, int port, int clientId)
     m_ibPort = port;
     m_ibClientId = clientId;
 
-    m_loginTimer->start(1000 * 10);
-    m_loginAttemptNumber = 1;
+    if (!m_loginTimer->isActive()) {
+        qDebug() << "        Starting login-attempt timer for 10 second intervals";
+        m_loginTimer->start(1000 * 10);
+    }
+    ++m_loginAttemptNumber;
     m_attemptingLogIn = true;
+    m_isConnected = false;
     m_ibqt->connectToTWS(url.toLatin1(), (quint16)port, clientId);
 }
 
@@ -341,6 +345,8 @@ void Manager::onManagedAccounts(const QByteArray &accountList)
     m_isConnected = true;
     m_attemptingLogIn = false;
     m_loginAttemptNumber = 0;
+    if (m_loginTimer->isActive())
+        m_loginTimer->stop();
     m_managedAccounts = QString(accountList).split(',', QString::SkipEmptyParts);
     emit connected();
 }
@@ -937,6 +943,7 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
     else if (errorCode == 504) {
         if (m_reconnectOnFailure) {
             qDebug() << "[ERROR-IbError" << QDateTime::currentDateTime().toString() << "] errorString:" << errorString;
+            qDebug() << "        Attempting to login again...";
             m_isConnected = false;
             login(m_ibUrl, m_ibPort, m_ibClientId);
         }
@@ -957,6 +964,7 @@ void Manager::onIbSocketError(const QString &errorString)
         m_isConnected = false;
         if (!m_attemptingLogIn) {
             qDebug() << "[ERROR-IbSocketError" << QDateTime::currentDateTime().toString() << "] errorString:" << errorString;
+            qDebug() << "        Attempting to login again...";
             login(m_ibUrl, m_ibPort, m_ibClientId);
         }
     }
@@ -968,6 +976,7 @@ void Manager::onConnectionClosed()
 
     if (m_reconnectOnFailure) {
         m_isConnected = false;
+        qDebug() << "        Attempting to login again...";
         login(m_ibUrl, m_ibPort, m_ibClientId);
     }
 }
@@ -1200,8 +1209,8 @@ bool Manager::isConnected() const
 
 void Manager::onTwsConnected()
 {
-    m_loginAttemptNumber = 0;
-    m_loginTimer->stop();
+//    m_loginAttemptNumber = 0;
+//    m_loginTimer->stop();
 }
 
 void Manager::delay(int milliseconds)
