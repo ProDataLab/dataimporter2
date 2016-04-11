@@ -64,7 +64,7 @@ private slots:
 
     void on_stopButton_clicked();
 
-    void on_autoDownloadCheckbox_toggled(bool checked);
+//    void on_autoDownloadCheckbox_toggled(bool checked);
 
     void onConnected();
 
@@ -74,13 +74,15 @@ private slots:
 
     void onDownloading(const QString & name);
 
+    void on_realtimeDataCheckbox_toggled(bool checked);
+
 private:
     Ui::MainWindow *ui;
     Manager* m_mgr;
     QString m_sqlSymbolTableName;
     bool m_logoutButtonClicked;
     bool m_reconnectOnFailure;
-    bool m_autoDownload;
+    bool m_realtimeDataEnabled;
 
 
     void readSettings();

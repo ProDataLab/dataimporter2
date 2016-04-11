@@ -82,28 +82,34 @@ IbHdf5::IbHdf5(const QString &tableName, const QString &filePath, QObject *paren
     m_fieldType[7] = timeFrameType;
 
     // CREATE OR OPEN THE FILE
-    if (!QFileInfo::exists(m_filePath))
+//    if (!QFileInfo::exists(m_filePath)) {
         m_fid = H5Fcreate (m_filePath.toLatin1().constData(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-    else
-        m_fid = H5Fopen(m_filePath.toLatin1().data(), H5F_ACC_RDWR, H5P_DEFAULT);
+//    }
+//    else {
+//        m_fid = H5Fopen(m_filePath.toLatin1().data(), H5F_ACC_RDWR, H5P_DEFAULT);
+//    }
 
 
 }
 
 bool IbHdf5::writeRecords(Record2* recArray, int nRecords)
 {
-    if (QFileInfo::exists(m_filePath)) {
-        QFile::remove(m_filePath);
-    }
+    qDebug() << "In IbHdf5::writeRecords()";
+    qDebug() << "    m_filePath:" << m_filePath;
+//    if (QFileInfo::exists(m_filePath)) {
+//        QFile::remove(m_filePath);
+//    }
 //    if (H5Lexists(m_fid, m_tableName.toLatin1().data(), H5P_DEFAULT) == TRUE) {
 //        qDebug() << "NUM HDF5 RECORDS IS:" << numRecords();
 //        H5TBdelete_record(m_fid, m_tableName.toLatin1().data(), 0, numRecords());
 //    }
 
-    if (H5Lexists(m_fid, m_tableName.toLatin1().data(), H5P_DEFAULT) == FALSE)
+    if (H5Lexists(m_fid, m_tableName.toLatin1().data(), H5P_DEFAULT) == FALSE) {
+        qDebug() << "    creating new HDF5 table for:" << m_tableName;
         H5TBmake_table(m_tableName.toLatin1().data(), m_fid, m_tableName.toLatin1().data(),
                    m_nFields, nRecords, sizeof(Record2), m_fieldNames, m_dst_offset,
                    m_fieldType, m_chunkSize, m_fillData, m_compress, recArray);
+    }
     else {
         H5TBappend_records(m_fid, m_tableName.toLatin1().data(), (hsize_t)nRecords, sizeof(Record2), m_dst_offset, m_dst_sizes, recArray);
     }

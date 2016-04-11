@@ -35,7 +35,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>355</width>
+             <width>299</width>
              <height>431</height>
             </rect>
            </property>
@@ -132,7 +132,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>355</width>
+             <width>299</width>
              <height>431</height>
             </rect>
            </property>
@@ -340,7 +340,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>355</width>
+             <width>299</width>
              <height>431</height>
             </rect>
            </property>
@@ -542,12 +542,12 @@
              </layout>
             </item>
             <item>
-             <widget class="QCheckBox" name="autoDownloadCheckbox">
+             <widget class="QCheckBox" name="realtimeDataCheckbox">
               <property name="enabled">
                <bool>true</bool>
               </property>
               <property name="text">
-               <string>Auto Download</string>
+               <string>Enable Realtime Data</string>
               </property>
               <property name="checked">
                <bool>false</bool>

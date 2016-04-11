@@ -185,6 +185,9 @@ void MainWindow::on_loadSymbolTablePushButton_clicked()
     if (m_mgr->initializeSqlDatabase()) {
         ui->tableView->setModel((QAbstractItemModel*)m_mgr->symbolTableModel());
         ui->tableView->show();
+        if (m_mgr->isConnected()) {
+            ui->startButton->setEnabled(true);
+        }
     }
     else
         qDebug() << "INIT SQL FAILED";
@@ -244,9 +247,9 @@ void MainWindow::on_numberOfMonthsSpinBox_valueChanged(int arg1)
 
 void MainWindow::on_startButton_clicked()
 {
-    ui->autoDownloadCheckbox->setEnabled(false);
-    if (m_autoDownload)
-        ui->statusBar->showMessage("Connected: Autodownload enabled: Starting download:");
+    ui->realtimeDataCheckbox->setEnabled(false);
+    if (m_realtimeDataEnabled)
+        ui->statusBar->showMessage("Connected: Realtime Data enabled: Starting download:");
     else
         ui->statusBar->showMessage("Connected: Starting download:");
 
@@ -257,15 +260,14 @@ void MainWindow::on_startButton_clicked()
 
     m_mgr->downloadQuotes();
 
-
-    if (!m_autoDownload) {
+    if (!m_realtimeDataEnabled) {
         ui->statusBar->showMessage("Connected: Download complete");
     }
     else {
 //        m_autoDownloadTimer->start(1000);
-        ui->statusBar->showMessage("Connected: Download complete: Autodownload enabled");
+        ui->statusBar->showMessage("Connected: Download complete: Realtime Data enabled");
     }
-    if (!m_autoDownload) {
+    if (!m_realtimeDataEnabled) {
         ui->startButton->setEnabled(true);
         ui->stopButton->setEnabled(false);
     }
@@ -279,27 +281,27 @@ void MainWindow::on_stopButton_clicked()
     ui->statusBar->showMessage("Connected: All Downloading stopped.. PLEASE wait..");
     ui->startButton->setEnabled(true);
     ui->stopButton->setEnabled(false);
-    ui->autoDownloadCheckbox->setEnabled(true);
+    ui->realtimeDataCheckbox->setEnabled(true);
 }
 
-void MainWindow::on_autoDownloadCheckbox_toggled(bool checked)
-{
-    QSettings m_settings;
-    m_mgr->setAutoDownloadEnabled(checked);
-//    m_settings.beginGroup(m_sqlSymbolTableName);
-    m_settings.setValue("download/autoDownloadChecked", QVariant(checked));
-    m_settings.sync();
-//    m_settings.endGroup();
-    m_autoDownload = checked;
-    if (checked) {
-        ui->statusBar->showMessage("Connected: Autodownload enabled");
-    }
-    else {
-        ui->statusBar->showMessage("Connected:");
-//        if (m_autoDownloadTimer->isActive())
-//            m_autoDownloadTimer->stop();
-    }
-}
+//void MainWindow::on_autoDownloadCheckbox_toggled(bool checked)
+//{
+//    QSettings m_settings;
+//    m_mgr->setRealTimeDataEnabled(checked);
+////    m_settings.beginGroup(m_sqlSymbolTableName);
+//    m_settings.setValue("download/autoDownloadChecked", QVariant(checked));
+//    m_settings.sync();
+////    m_settings.endGroup();
+//    m_realTimeDataEnabled = checked;
+//    if (checked) {
+//        ui->statusBar->showMessage("Connected: Autodownload enabled");
+//    }
+//    else {
+//        ui->statusBar->showMessage("Connected:");
+////        if (m_autoDownloadTimer->isActive())
+////            m_autoDownloadTimer->stop();
+//    }
+//}
 
 
 // PRIVATE METHODS
@@ -420,9 +422,9 @@ void MainWindow::readSettings()
     ui->numberOfMonthsSpinBox->setValue(ival);
     m_mgr->setNumberOfMonths(ival);
 
-    bval = m_settings.value("autoDownloadChecked").toBool();
-    ui->autoDownloadCheckbox->setChecked(bval);
-    m_mgr->setAutoDownloadEnabled(bval);
+    bval = m_settings.value("realtimeDataChecked").toBool();
+    ui->realtimeDataCheckbox->setChecked(bval);
+    m_mgr->setRealTimeDataEnabled(bval);
 
     m_settings.endGroup(); // download
 
@@ -458,13 +460,13 @@ void MainWindow::writeSettings()
 
 void MainWindow::onConnected()
 {
-    if (m_autoDownload)
+    if (m_realtimeDataEnabled)
         ui->statusBar->showMessage(QString("Connected: Autodownload enabled:"));
     else
         ui->statusBar->showMessage(QString("Connected:"));
     ui->loginButton->setEnabled(false);
     ui->logoutButton->setEnabled(true);
-    ui->startButton->setEnabled(true);
+//    ui->startButton->setEnabled(true);
 //    m_reconnectTimer->start(1000);
 }
 
@@ -538,4 +540,23 @@ void MainWindow::on_hdf5OutputFolderLineEdit_editingFinished()
 void MainWindow::onDownloading(const QString & name)
 {
     ui->statusBar->showMessage(name);
+}
+
+void MainWindow::on_realtimeDataCheckbox_toggled(bool checked)
+{
+    QSettings m_settings;
+    m_mgr->setRealTimeDataEnabled(checked);
+//    m_settings.beginGroup(m_sqlSymbolTableName);
+    m_settings.setValue("download/realtimeDataChecked", QVariant(checked));
+    m_settings.sync();
+//    m_settings.endGroup();
+    m_realtimeDataEnabled = checked;
+    if (checked) {
+        ui->statusBar->showMessage("Connected: Realtime Data enabled");
+    }
+    else {
+        ui->statusBar->showMessage("Connected:");
+//        if (m_autoDownloadTimer->isActive())
+//            m_autoDownloadTimer->stop();
+    }
 }

@@ -29,6 +29,9 @@ struct Symbol
     QByteArray                  secType;
     QByteArray                  currency;
     bool                        insertRealTimeData;
+    bool                        contractDetailsOnly;
+    bool                        isRealTimeId;
+    int                         error505Count;
 };
 
 #endif // SYMBOL_H

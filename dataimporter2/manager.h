@@ -71,7 +71,7 @@ public:
 
     void setStopButtonClicked(bool stopButtonClicked);
 
-    void setAutoDownloadEnabled(bool autoDownloadEnabled);
+    void setRealTimeDataEnabled(bool autoDownloadEnabled);
 
     void setUseSql(bool useSql);
 
@@ -102,6 +102,7 @@ private slots:
     void onRealTimeDataTimerTimeout();
     void onRequestedHistoricalDataTimerTimeout();
     void onRequestedContractDetailsTimerTimeout();
+    void onLiquidTradingHoursTimerTimeout();
 
 
 private:
@@ -127,7 +128,7 @@ private:
     QString             m_durationStr;
     int                 m_numberOfMonths;
     bool                m_stopButtonClicked;
-    bool                m_autoDownloadEnabled;
+    bool                m_realTimeDataEnabled;
     bool                m_useSql;
     bool                m_useHdf5;
     QMap<int, Symbol*>  m_symbolMap;
@@ -140,6 +141,7 @@ private:
     QTimer*             m_realTimeDataTimer;
     QTimer*             m_reqHistoricalDataTimer;
     QTimer*             m_reqContractDetailsTimer;
+    QTimer*             m_liquidTradingHoursTimer;
     QVector<long>       m_realTimeIds;
     QMap<Symbol*,IbHdf5*> m_hdf5Map;
     bool                m_isConnected;
@@ -147,6 +149,7 @@ private:
     QDateTime           m_lastDt;
     QDateTime           m_liquidHoursStartTime;
     QDateTime           m_liquidHoursEndTime;
+    bool                m_attemptingLogIn;
 
 
     void        delay(int milliseconds);
