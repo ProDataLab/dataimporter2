@@ -16,6 +16,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
+#include <QRegularExpressionMatch>
 
 
 Manager::Manager(QObject *parent)
@@ -29,7 +31,8 @@ Manager::Manager(QObject *parent)
     m_realTimeDataTimer = new QTimer(this);
     m_reqHistoricalDataTimer = new QTimer(this);
     m_reqContractDetailsTimer = new QTimer(this);
-    m_liquidTradingHoursTimer = new QTimer(this);
+//    m_liquidTradingHoursTimer = new QTimer(this);
+    m_currentTimeTimer = new QTimer(this);
 
     m_hdf5OutputFolderPath = QCoreApplication::applicationDirPath();
 
@@ -49,9 +52,11 @@ Manager::Manager(QObject *parent)
     connect(m_reqHistoricalDataTimer, SIGNAL(timeout()), this, SLOT(onRequestedHistoricalDataTimerTimeout()));
     connect(m_reqContractDetailsTimer, SIGNAL(timeout()), this, SLOT(onRequestedContractDetailsTimerTimeout()));
     connect(m_loginTimer, SIGNAL(timeout()), SLOT(onLoginTimerTimeout()));
-    connect(m_liquidTradingHoursTimer, SIGNAL(timeout()), SLOT(onLiquidTradingHoursTimerTimeout()));
+//    connect(m_liquidTradingHoursTimer, SIGNAL(timeout()), SLOT(onLiquidTradingHoursTimerTimeout()));
+    connect(m_currentTimeTimer, SIGNAL(timeout()), this, SLOT(onCurrentTimeTimerTimeout()));
 
-    m_liquidTradingHoursTimer->start(1000 * 60);
+//    m_liquidTradingHoursTimer->start(1000 * 60);
+    m_currentTimeTimer->start(1000);
 
     m_barSizes << "1 secs"
                << "5 secs"
@@ -358,11 +363,15 @@ void Manager::onContractDetails(int reqId, const ContractDetails &contractDetail
 
     Symbol* s = m_symbolMap[reqId];
 
+    if (s == NULL) {
+        return;
+    }
+
     qDebug() << "        for symbol:" << s->symbolName;
 
     s->contractDetails = contractDetails;
 
-    parseLiquidHours(s->contractDetails.liquidHours, s->contractDetails.timeZoneId);
+    parseLiquidHours(s);
 
 }
 
@@ -375,7 +384,15 @@ void Manager::onContractDetailsEnd(int reqId)
 
     Symbol* s = m_symbolMap[reqId];
 
+    if (s == NULL)
+        return;
+
     qDebug() << "        for symbol:" << s->symbolName;
+
+    if (s->liquidHoursStartTime == QDateTime::fromTime_t(0) || s->liquidHoursEndTime == QDateTime::fromTime_t(0)) {
+        m_lock = false;
+        return;
+    }
 
     if (s->contractDetailsOnly) {
         qDebug() << "s->contractDetailsOnly = true .. leaving onContractDetailsEnd()";
@@ -389,7 +406,8 @@ void Manager::onContractDetailsEnd(int reqId)
     m_db.close();
     m_db.setDatabaseName(m_sqlOutputDatabaseName);
     m_db.open();
-    s->model = new QSqlTableModel(this, m_db);
+    s->model = new QSqlTableModel(this, m_db);//    QString target("20090507:0930-1600;20090508:CLOSED");
+
     s->rowCount = 0;
 
     QDateTime dt;
@@ -484,9 +502,12 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
 {
     Symbol* s = m_symbolMap[reqId];
 
+    if (s == NULL)
+        return;
+
 //    qDebug() << "."/* << "startTime:" << m_liquidHoursStartTime << "endTime:" << m_liquidHoursEndTime*/;
     qDebug() << "." << s->symbolName << "reqId:" << reqId << ".. dt:" << QDateTime::fromTime_t(date.toUInt());
-    qDebug() << "QByteArray(date):" << date;
+    qDebug() << "    QByteArray(date):" << date;
 
     static int lastCdtDataSize = 0;
 
@@ -498,7 +519,7 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
         qDebug() << "m_symbolMap[reqId] is NULL";
         return;
     }
-    qDebug() << "m_stopButtonClicked is:" << m_stopButtonClicked;
+//    qDebug() << "m_stopButtonClicked is:" << m_stopButtonClicked;
 
     if (m_stopButtonClicked) {
 //        date = "finished";
@@ -647,9 +668,9 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
                 long newId = m_ibqt->getTickerId();
                 m_symbolMap[newId] = s;
                 m_symbolMap.remove(reqId);
-                for (int i=0;i<m_cdtData.size();++i) {
-                    qDebug() << QDateTime::fromTime_t(m_cdtData.at(i).value("timestamp").toUInt());
-                }
+//                for (int i=0;i<m_cdtData.size();++i) {
+//                    qDebug() << QDateTime::fromTime_t(m_cdtData.at(i).value("timestamp").toUInt());
+//                }
                 qDebug() << "calling m_ibqt->reqHistoricalData() for symbol:" << s->symbolName << " .. dt:" << dt;
 
                 // DELAY
@@ -810,22 +831,22 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
         qDebug() << "    ldt:" << ldt;
 
         if (dt < fdt) {
-            qDebug() << "In onHistoricalData() .. dt < fdt .. m_edtData.append(r) .. m_edtData.size():" << m_edtData.size();
+            qDebug() << "    In onHistoricalData() .. dt < fdt .. m_edtData.append(r) .. m_edtData.size():" << m_edtData.size();
 //            s->model->insertRecord(0, r);
             m_edtData.append(r);
             emit downloading(dlStr);
 
         }
         else if (dt > ldt) {
-            qDebug() << "In onHistoricalData() .. dt > ldt .. m_cdtData.append(r)";
+            qDebug() << "    In onHistoricalData() .. dt > ldt .. m_cdtData.append(r)";
             emit downloading(dlStr);
             if (m_cdtData.isEmpty()) {
-                qDebug() << "m_cdtData.isEmpty() .. m_cdtData.append(r)";
+                qDebug() << "    m_cdtData.isEmpty() .. m_cdtData.append(r)";
                 m_cdtData.append(r);
             }
             QSqlRecord crb;
             for (int i=0;i<m_cdtData.size();++i) {
-                qDebug() << "In m_cdtData FOR LOOP .. m_cdtData.size():" << m_cdtData.size();
+//                qDebug() << "In m_cdtData FOR LOOP .. m_cdtData.size():" << m_cdtData.size();
                 QSqlRecord cr = m_cdtData.at(i);
                 QDateTime cdt = QDateTime::fromTime_t(cr.value("timestamp").toUInt());
                 if (i==0) {
@@ -848,12 +869,12 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
             }
         }
         else {
-            qDebug() << "WE CAUGHT A DUPLICATE";
+            qDebug() << "    WE CAUGHT A DUPLICATE";
 //            return;
         }
     }
     else  {
-        qDebug() << "In onHistoricalData() .. s->model->insertRecord(-1, r)";
+        qDebug() << "    In onHistoricalData() .. s->model->insertRecord(-1, r)";
         s->model->insertRecord(-1, r);
         emit downloading(dlStr);
     }
@@ -863,6 +884,8 @@ void Manager::onTickPrice(const long &tickerId, const TickType &field, const dou
 {
     if (field == LAST) {
         Symbol* s = m_symbolMap[tickerId];
+        if (s == NULL)
+            return;
         QString msg("TICKPRICE for symbol:" + s->symbolName + "is:" + QString::number(price));
         qDebug() << msg;
         emit downloading(msg);
@@ -879,6 +902,10 @@ void Manager::onTickSize(const long &tickerId, const TickType &field, int size)
 {
     if (field == LAST_SIZE) {
         Symbol* s       = m_symbolMap[tickerId];
+
+        if (s == NULL)
+            return;
+
         RtRecord* r     = s->realTimeData.last();
 
         QString msg("TICKSIZE  for symbol:" + s->symbolName + "is" + QString::number(size));
@@ -913,7 +940,6 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
 
         Symbol* s = m_symbolMap[id];
         if (s == NULL) {
-            qDebug() << "In onError: s == NULL";
             return;
         }
 
@@ -1001,13 +1027,16 @@ void Manager::onRealTimeDataTimerTimeout()
 
     QDateTime cdt = QDateTime::currentDateTime();
 
-    if (!(timeIsInLiquidTradingHours(cdt)))
-        return;
-
     // we are collecting data for more than one symbol, probably
     for (int i=0;i<m_realTimeIds.size();++i) {
         long rtId = m_realTimeIds.at(i);
         Symbol* s = m_symbolMap[rtId];
+
+        if (s == NULL)
+            return;
+
+        if (!(timeIsInLiquidTradingHours(s, cdt)))
+            continue;
 
         if (!s->insertRealTimeData) {
             RtRecord r = *(s->realTimeData.last());
@@ -1060,11 +1089,11 @@ void Manager::onRealTimeDataTimerTimeout()
         }
 
 
-        if (!timeIsSameTradingDay(ldt)
-                && cdt > m_liquidHoursStartTime
+        if (!timeIsSameTradingDay(s, ldt)
+                && cdt > s->liquidHoursStartTime
                 /*&& cdt < m_liquidHoursEndTime.addSecs(m_timeFrameInSeconds)*/)
         {
-            ndt = m_liquidHoursStartTime;
+            ndt = s->liquidHoursStartTime;
         }
         else {
             ndt = ldt.addSecs(m_timeFrameInSeconds);
@@ -1168,38 +1197,73 @@ void Manager::onRequestedContractDetailsTimerTimeout()
     m_lock = false;
 }
 
-void Manager::onLiquidTradingHoursTimerTimeout()
+void Manager::onCurrentTimeTimerTimeout()
 {
-    qDebug() << "\n\n";
-    qDebug() << "In onLiquidTradingHoursTimerTimeout()";
-    qDebug() << "        m_symbolMap.size():" << m_symbolMap.size();
+    static bool updating = false;
 
-    QList<Symbol*>  symbols;
-    QList<int>     reqIdList;
-    reqIdList = QSet<int>::fromList(m_symbolMap.keys()).toList();
-    for (int i=0;i<reqIdList.size();++i) {
-        long reqId  = reqIdList.at(i);
-        Symbol* s   = m_symbolMap[reqId];
+    m_currentTime = QDateTime::currentDateTime();
 
-        qDebug() << "In onLiquidTradingHoursTimerTimeout()";
+    if (updating)
+        return;
 
-        qDebug() << "        m_symbolMap symbol name is:" << s->symbolName;
-
-//        if (/*s->isRealTimeId || */symbols.contains(s)) {
-//            qDebug() << "        ... this symbol is a repeat.. ignoring and moving to the next symbol";
-//            continue;
-//        }
-//        symbols.append(s);
-
-        long nId = m_ibqt->getTickerId();
-        m_symbolMap[nId] = s;
-        m_symbolMap.remove(reqId);
-
-        qDebug() << "        reqContractDetails for symbol:" << s->symbolName;
-
-        m_ibqt->reqContractDetails(nId, s->contractDetails.summary);
+    QList<int> reqIdList;
+    for (int i=0;i<m_symbolMap.keys().size();++i) {
+        int reqId = m_symbolMap.keys().at(i);
+        Symbol* s = m_symbolMap[reqId];
+        if (!reqIdList.contains(reqId) && !s->isRealTimeId) {
+            reqIdList.append(reqId);
+        }
     }
+    for (int i=0;i<reqIdList.size();++i) {
+        updating = true;
+        int reqId = reqIdList.at(i);
+        Symbol* s = m_symbolMap[reqId];
+        QDateTime currentExchangeTime = m_currentTime.toTimeZone(QTimeZone(s->contractDetails.timeZoneId));
+        QDateTime currentliquidHoursStart = s->liquidHoursStartTime;
+
+        if (currentExchangeTime.date().day() != currentliquidHoursStart.date().day()) {
+            m_ibqt->reqContractDetails(reqId, s->contractDetails.summary);
+            delay(1000);
+        }
+    }
+    updating = false;
 }
+
+//void Manager::onLiquidTradingHoursTimerTimeout()
+//{
+//    qDebug() << "\n\n";
+//    qDebug() << "In onLiquidTradingHoursTimerTimeout()";
+
+//    qDebug() << "        m_symbolMap.size():" << m_symbolMap.size();
+
+//    QList<int>     reqIdList;
+//    reqIdList = QSet<int>::fromList(m_symbolMap.keys()).toList();
+//    for (int i=0;i<reqIdList.size();++i) {
+//        long reqId  = reqIdList.at(i);
+//        Symbol* s   = m_symbolMap[reqId];
+
+//        if (s == NULL)
+//            continue;
+
+//        qDebug() << "In onLiquidTradingHoursTimerTimeout()";
+
+//        qDebug() << "        m_symbolMap symbol name is:" << s->symbolName;
+
+////        if (/*s->isRealTimeId || */symbols.contains(s)) {
+////            qDebug() << "        ... this symbol is a repeat.. ignoring and moving to the next symbol";
+////            continue;
+////        }
+////        symbols.append(s);
+
+//        long nId = m_ibqt->getTickerId();
+//        m_symbolMap[nId] = s;
+//        m_symbolMap.remove(reqId);
+
+//        qDebug() << "        reqContractDetails for symbol:" << s->symbolName;
+
+//        m_ibqt->reqContractDetails(nId, s->contractDetails.summary);
+//    }
+//}
 
 
 bool Manager::isConnected() const
@@ -1227,6 +1291,9 @@ QDateTime Manager::empiricalDataComplete(long reqId)
 {
     Symbol* s = m_symbolMap[reqId];
 
+    if (s == NULL)
+        return QDateTime();
+
     QDateTime fdt = QDateTime::fromTime_t(s->model->record(0).value("timestamp").toUInt());
 
     qDebug() << "In empericalDataComplete() .. fdt:" << fdt << "cdt:" << QDateTime::currentDateTime();
@@ -1240,22 +1307,26 @@ QDateTime Manager::empiricalDataComplete(long reqId)
 QDateTime Manager::currentDataComplete(long reqId)
 {
     Symbol* s = m_symbolMap[reqId];
+
+    if (s == NULL)
+        return QDateTime();
+
     QDateTime ldt = QDateTime::fromTime_t(s->model->record(s->model->rowCount()-1).value("timestamp").toUInt());
     QDateTime cdt = QDateTime::currentDateTime();
 
     qDebug() << "In currentDataComplete() .. ldt:" << ldt << "cdt:" << cdt;
 
-    if (timeIsInLiquidTradingHours(ldt) && ldt.addSecs(m_timeFrameInSeconds) > cdt)
+    if (timeIsInLiquidTradingHours(s, ldt) && ldt.addSecs(m_timeFrameInSeconds) > cdt)
         return QDateTime();
 
     qDebug() << "In currentDataComplete: ldt + m_timeFrameInSeconds:" << ldt.time().addSecs(m_timeFrameInSeconds);
     qDebug() << "In currentDataComplete: m_liquidEnd.time:" << m_liquidHoursEndTime.time();
 
-    if (timeIsSameTradingDay(ldt) && ldt.time().addSecs(m_timeFrameInSeconds) == m_liquidHoursEndTime.time()) {
+    if (timeIsSameTradingDay(s, ldt) && ldt.time().addSecs(m_timeFrameInSeconds) == m_liquidHoursEndTime.time()) {
         return QDateTime();
     }
 
-    if (m_liquidHoursStartTime.isNull()
+    if (s->liquidHoursStartTime.isNull()
             && (cdt.date().dayOfWeek() == 6 && ldt.date().addDays(1) == cdt.date())
             || (cdt.date().dayOfWeek() == 7 && ldt.date().addDays(2) == cdt.date())
             || (cdt.date().dayOfWeek() == 8 && ldt.date().addDays(3) == cdt.date()))
@@ -1273,6 +1344,9 @@ QString Manager::ibEndDateTimeToString(const QDateTime &edt)
 
 void Manager::sqlSubmit(long reqId)
 {
+    if (m_symbolMap[reqId] == NULL)
+        return;
+
     QSqlTableModel* model = m_symbolMap[reqId]->model;
 
     bool isDirty = model->isDirty();
@@ -1293,7 +1367,7 @@ void Manager::sqlSubmit(long reqId)
 //    m_lastReqId = reqId;
 }
 
-void Manager::parseLiquidHours(const QByteArray &liquidHoursString, const QByteArray & timeZone)
+void Manager::parseLiquidHours(Symbol* s)
 {
     qDebug() << "In parseLiquidHours()";
 
@@ -1302,7 +1376,22 @@ void Manager::parseLiquidHours(const QByteArray &liquidHoursString, const QByteA
 //        return;
 //    }
 
-    QString lhs(liquidHoursString);
+//    The liquid trading hours of the product. For example, 20090507:0930-1600;20090508:CLOSED.
+
+
+    QRegularExpression re("^\\d{8}:((\\d{4}-\\d{4})|(CLOSED));\\d{8}:((\\d{4}-\\d{4})|(CLOSED))");
+
+    QRegularExpressionMatch m = re.match(s->contractDetails.liquidHours);
+
+    if (!m.hasMatch()) {
+        s->liquidHoursEndTime = QDateTime::fromTime_t(0);
+        s->liquidHoursStartTime = QDateTime::fromTime_t(0);
+        return;
+    }
+
+    QByteArray timeZone = s->contractDetails.timeZoneId;
+
+    QString lhs(s->contractDetails.liquidHours);
     QString today = lhs.split(';').at(0);
     qDebug() << "today:" << today;
     QString date = today.split(':').at(0);
@@ -1319,41 +1408,41 @@ void Manager::parseLiquidHours(const QByteArray &liquidHoursString, const QByteA
         QString endTime = times.split('-', QString::SkipEmptyParts).at(1);
         qDebug() << "endTime:" << endTime;
 
-        m_liquidHoursStartTime = QDateTime::fromString(date+startTime, "yyyyMMddhhmm");
-        m_liquidHoursStartTime.setTimeZone(QTimeZone(timeZone));
-        m_liquidHoursStartTime = m_liquidHoursStartTime.toTimeSpec(Qt::LocalTime);
+        s->liquidHoursStartTime = QDateTime::fromString(date+startTime, "yyyyMMddhhmm");
+        s->liquidHoursStartTime.setTimeZone(QTimeZone(timeZone));
+        s->liquidHoursStartTime = s->liquidHoursStartTime.toTimeSpec(Qt::LocalTime);
 
-        m_liquidHoursEndTime   = QDateTime::fromString(date+endTime, "yyyyMMddhhmm");
-        m_liquidHoursEndTime.setTimeZone(QTimeZone(timeZone));
-        m_liquidHoursEndTime = m_liquidHoursEndTime.toTimeSpec(Qt::LocalTime);
+        s->liquidHoursEndTime   = QDateTime::fromString(date+endTime, "yyyyMMddhhmm");
+        s->liquidHoursEndTime.setTimeZone(QTimeZone(timeZone));
+        s->liquidHoursEndTime = s->liquidHoursEndTime.toTimeSpec(Qt::LocalTime);
 
-        qDebug() << "m_liquidHoursStartTime:" << m_liquidHoursStartTime;
-        qDebug() << "m_liquidHoursEndTime:" << m_liquidHoursEndTime;
+        qDebug() << "s->liquidHoursStartTime:" << s->liquidHoursStartTime;
+        qDebug() << "s->liquidHoursEndTime:" << s->liquidHoursEndTime;
     }
     else {
-        m_liquidHoursStartTime = QDateTime();
-        m_liquidHoursEndTime = QDateTime();
+        s->liquidHoursStartTime = QDateTime();
+        s->liquidHoursEndTime = QDateTime();
     }
 }
 
-bool Manager::timeIsInLiquidTradingHours(const QDateTime & dt)
+bool Manager::timeIsInLiquidTradingHours(Symbol*s, const QDateTime & dt)
 {
-    qDebug() << "m_liquidHoursStartTime:" << m_liquidHoursStartTime << "m_liquidHoursEndTime:" << m_liquidHoursEndTime;
+    qDebug() << "s->liquidHoursStartTime:" << s->liquidHoursStartTime << "s->liquidHoursEndTime:" << s->liquidHoursEndTime;
 
-    bool ret = !(m_liquidHoursStartTime.isNull() || m_liquidHoursEndTime.isNull());
+    bool ret = !(s->liquidHoursStartTime.isNull() || s->liquidHoursEndTime.isNull());
 
     if (ret)
-        ret = (dt > m_liquidHoursStartTime && dt < m_liquidHoursEndTime);
+        ret = (dt > s->liquidHoursStartTime && dt < s->liquidHoursEndTime);
 
 //    qDebug() << "In timeIsInLiquidTradingHours() returning:" <<  ret;
 
     return ret;
 }
 
-bool Manager::timeIsSameTradingDay(const QDateTime &dt)
+bool Manager::timeIsSameTradingDay(Symbol* s, const QDateTime &dt)
 {
     QDate nd = dt.addDays(1).date();
-    QTime nt = m_liquidHoursStartTime.time();
+    QTime nt = s->liquidHoursStartTime.time();
     QDateTime ndt(nd, nt);
 
     QDateTime cdt = QDateTime::currentDateTime();

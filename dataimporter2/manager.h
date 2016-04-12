@@ -102,7 +102,9 @@ private slots:
     void onRealTimeDataTimerTimeout();
     void onRequestedHistoricalDataTimerTimeout();
     void onRequestedContractDetailsTimerTimeout();
-    void onLiquidTradingHoursTimerTimeout();
+
+//    void onLiquidTradingHoursTimerTimeout();
+    void onCurrentTimeTimerTimeout();
 
 
 private:
@@ -141,7 +143,8 @@ private:
     QTimer*             m_realTimeDataTimer;
     QTimer*             m_reqHistoricalDataTimer;
     QTimer*             m_reqContractDetailsTimer;
-    QTimer*             m_liquidTradingHoursTimer;
+//    QTimer*             m_liquidTradingHoursTimer;
+    QTimer*             m_currentTimeTimer;
     QVector<long>       m_realTimeIds;
     QMap<Symbol*,IbHdf5*> m_hdf5Map;
     bool                m_isConnected;
@@ -150,6 +153,7 @@ private:
     QDateTime           m_liquidHoursStartTime;
     QDateTime           m_liquidHoursEndTime;
     bool                m_attemptingLogIn;
+    QDateTime           m_currentTime;
 
 
     void        delay(int milliseconds);
@@ -157,9 +161,9 @@ private:
     QDateTime   currentDataComplete(long reqId);
     QString     ibEndDateTimeToString(const QDateTime & edt);
     void        sqlSubmit(long reqId);
-    void        parseLiquidHours(const QByteArray & liquidHoursString, const QByteArray &timeZone);
-    bool        timeIsInLiquidTradingHours(const QDateTime & dt);
-    bool        timeIsSameTradingDay(const QDateTime & dt);
+    void        parseLiquidHours(Symbol *s);
+    bool        timeIsInLiquidTradingHours(Symbol *s, const QDateTime & dt);
+    bool        timeIsSameTradingDay(Symbol *s, const QDateTime & dt);
     void        reqHistoricalData(long tickerId, const Contract &contract, const QByteArray &endDateTime, const QByteArray &durationStr,
                                   const QByteArray &barSizeSetting, const QByteArray &whatToShow, int useRTH, int formatDate, const QList<TagValue *> &chartOptions);
 //    void        convertSqlToHdf5(Symbol* s);

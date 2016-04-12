@@ -32,6 +32,8 @@ struct Symbol
     bool                        contractDetailsOnly;
     bool                        isRealTimeId;
     int                         error505Count;
+    QDateTime                   liquidHoursStartTime;
+    QDateTime                   liquidHoursEndTime;
 };
 
 #endif // SYMBOL_H
