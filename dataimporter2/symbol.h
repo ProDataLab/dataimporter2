@@ -24,13 +24,15 @@ struct Symbol
     bool                        firstDataDownloaded;
     QString                     timeFrameString;
     long                        realTimeDataId;
+    long                        contractDetailsId;
     QVector<RtRecord*>          realTimeData;
     QByteArray                  primaryExchange;
     QByteArray                  secType;
     QByteArray                  currency;
     bool                        insertRealTimeData;
     bool                        contractDetailsOnly;
-    bool                        isRealTimeId;
+//    bool                        isRealTimeId;
+//    bool                        isContractDetailsId;
     int                         error505Count;
     QDateTime                   liquidHoursStartTime;
     QDateTime                   liquidHoursEndTime;

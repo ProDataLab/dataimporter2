@@ -150,8 +150,7 @@ private:
     bool                m_isConnected;
     long                m_lastReqId;
     QDateTime           m_lastDt;
-    QDateTime           m_liquidHoursStartTime;
-    QDateTime           m_liquidHoursEndTime;
+
     bool                m_attemptingLogIn;
     QDateTime           m_currentTime;
 

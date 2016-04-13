@@ -56,7 +56,6 @@ Manager::Manager(QObject *parent)
     connect(m_currentTimeTimer, SIGNAL(timeout()), this, SLOT(onCurrentTimeTimerTimeout()));
 
 //    m_liquidTradingHoursTimer->start(1000 * 60);
-    m_currentTimeTimer->start(1000);
 
     m_barSizes << "1 secs"
                << "5 secs"
@@ -87,6 +86,18 @@ void Manager::login(const QString &url, int port, int clientId)
     m_attemptingLogIn = true;
     m_isConnected = false;
     m_ibqt->connectToTWS(url.toLatin1(), (quint16)port, clientId);
+
+    if (!m_currentTimeTimer->isActive()) {
+        bool inSync = false;
+        while (!inSync) {
+            if (QDateTime::currentDateTime().time().second() == 0) {
+                m_currentTimeTimer->start(1000 * 60);
+                inSync = true;
+            }
+            if (!inSync)
+                delay(100);
+        }
+    }
 }
 
 void Manager::logout()
@@ -130,6 +141,15 @@ void Manager::downloadQuotes()
 
     qDebug() << "m_symbolTableModel:" << m_symbolTableModel;
 
+//    m_currentTimeTimer->start(1000);
+
+    while (!m_currentTimeTimer->isActive()) {
+        bool firstRun = true;
+        if (firstRun)
+            emit downloading("Syncing application time. this may take a minute.. PLEASE WAIT..");
+        delay(1000);
+    }
+
     for (int i=0;i<m_symbolTableModel->rowCount();++i) {
 //    for (int i=0;i<1;++i) {
         if (m_db.isOpen() && m_db.databaseName() != m_sqlDatabaseName) {
@@ -144,6 +164,7 @@ void Manager::downloadQuotes()
 
         Symbol* s = new Symbol;
         m_symbolMap[reqId] = s;
+        s->contractDetailsId = reqId;
 //        m_symbolMap[realId] = s;
 
         s->symbolName       = symbol;
@@ -184,6 +205,7 @@ void Manager::downloadQuotes()
             if (m_stopButtonClicked) {
                 qDebug() << "STOP BUTTON CLICKED .. LEAVING DOWNLOAD QUOTES";
 //                m_stopButtonClicked = false;
+                m_symbolMap.clear();
                 return;
             }
             qDebug() << "-";
@@ -325,8 +347,10 @@ void Manager::setStopButtonClicked(bool stopButtonClicked)
     for (int i=0;i<m_realTimeIds.size();++i) {
         m_ibqt->cancelMktData(m_realTimeIds.at(i));
     }
-    m_realTimeDataTimer->stop();
+    if (m_realTimeDataTimer->isActive())
+        m_realTimeDataTimer->stop();
     m_stopButtonClicked = stopButtonClicked;
+//    m_symbolMap.clear();
     emit downloading("All Downloading stopped");
 }
 
@@ -442,7 +466,17 @@ void Manager::onContractDetailsEnd(int reqId)
         dt = QDateTime::currentDateTime();
 
     }
-    if (dt.isNull()){
+
+    s->model->setTable(s->tableName);
+    s->model->setEditStrategy(QSqlTableModel::OnManualSubmit);
+    s->model->select();
+    s->rowCount = s->model->rowCount();
+
+    if (dt.isNull() && s->rowCount == 0)
+        dt = QDateTime::currentDateTime();
+
+    if (dt.isNull()) {
+
         // CHECK TO SEE IF DATABASE IS EMPIRICALLY COMPLETE AND UP TO DATE
 
         QDateTime edt = empiricalDataComplete(reqId);
@@ -456,22 +490,31 @@ void Manager::onContractDetailsEnd(int reqId)
         dt = currentDataComplete(reqId);
     }
 
+    if (dt == QDateTime::fromTime_t(0)) {
+        qDebug() << "dt is a bad date.. skipping this symbol.. m_lock = false now";
+        m_lock = false;
+        return;
+    }
+
     if (dt.isNull() && !m_realTimeDataEnabled) {
         qDebug() << "dt.isNull() && !m_autoDownloadEnabled()";
         m_lock = false;
         return;
     }
 
-    s->model->setTable(s->tableName);
-    s->model->setEditStrategy(QSqlTableModel::OnManualSubmit);
-    s->model->select();
-    s->rowCount = s->model->rowCount();
-
     if (m_realTimeDataEnabled) {
         long rtId = m_ibqt->getTickerId();
         s->realTimeDataId = rtId;
         m_symbolMap[rtId] = s;
-        s->isRealTimeId = true;
+//        s->isRealTimeId = true;
+
+//        // START LIQUID HOURS TIMER
+//        if (!m_liquidTradingHoursTimer->isActive())
+//            m_liquidTradingHoursTimer->start(1000 * 60);
+
+//        // START CURRENT TIME TIMER
+//        if (!m_currentTimeTimer->isActive())
+//            m_currentTimeTimer->start(1000 * 60);
 
         // START RT DATA COLLECTION
         m_realTimeIds.append(rtId);
@@ -480,12 +523,21 @@ void Manager::onContractDetailsEnd(int reqId)
     }
 
     if (!dt.isNull()) {
-        // START HIST DATA COLLECTION
         long histId = m_ibqt->getTickerId();
         m_symbolMap[histId] = s;
-        m_symbolMap.remove(reqId);
+//        m_symbolMap.remove(reqId);
         qDebug() << "calling reqHistoricalData() .. for symbol:" << s->symbolName << " .. reqId:" << histId << ".. dt:" << dt;
 //        m_lastReqId = histId;
+
+//        // START LIQUID HOURS TIMER
+//        if (!m_liquidTradingHoursTimer->isActive())
+//            m_liquidTradingHoursTimer->start(1000 * 60);
+
+//        // START CURRENT TIME TIMER
+//        if (!m_currentTimeTimer->isActive())
+//            m_currentTimeTimer->start(1000 * 60);
+
+        // START HIST DATA COLLECTION
         reqHistoricalData(histId, s->contractDetails.summary, ibEndDateTimeToString(dt).toLatin1(),
                                   m_durationStr.toLatin1(), m_barSizes.at((int)m_timeFrame).toLatin1(),
                                   QByteArray("TRADES"), 1, 2, QList<TagValue*>());
@@ -531,7 +583,7 @@ void Manager::onHistoricalData(long reqId, const QByteArray &date, double open, 
 //        m_stopButtonClicked = false;
     }
 
-    if (date.contains("finished") || m_stopButtonClicked) {
+    if (date.contains("finished")) {
 
         qDebug() << "date.contains('finished') for:" << s->tableName << "m_cdtData.size():" << m_cdtData.size();
         qDebug() << "    s->model->rowCount():" << s->model->rowCount();
@@ -930,6 +982,21 @@ void Manager::onTickSize(const long &tickerId, const TickType &field, int size)
 
 void Manager::onError(const int id, const int errorCode, const QByteArray errorString)
 {
+    Symbol* s = m_symbolMap[id];
+
+
+//    [IBQT ERROR] -1 2105 "HMDS data farm connection is broken:ushmds.us"
+//    [IBQT ERROR] -1 2103 "Market data farm connection is broken:usfarm"
+//    [IBQT ERROR] -1 2103 "Market data farm connection is broken:usfarm.us"
+//    [IBQT ERROR] -1 2103 "Market data farm connection is broken:cafarm"
+//    [IBQT ERROR] -1 2105 "HMDS data farm connection is broken:ushmds"
+//    [IBQT ERROR] -1 2103 "Market data farm connection is broken:jfarm"
+//    [IBQT INFO] -1 2106 "HMDS data farm connection is OK:ushmds"
+//    [IBQT INFO] -1 2106 "HMDS data farm connection is OK:ushmds.us"
+//    [IBQT INFO] -1 2104 "Market data farm connection is OK:cafarm"
+//    [IBQT INFO] -1 2104 "Market data farm connection is OK:usfarm.us"
+//    [IBQT INFO] -1 2104 "Market data farm connection is OK:usfarm"
+//    [IBQT INFO] -1 2104 "Market data farm connection is OK:jfarm"
 
     if (errorCode == 2104 || errorCode == 2106 || errorCode == 2108) {
         qDebug() << "[IBQT INFO]" << id << errorCode << errorString;
@@ -938,7 +1005,6 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
         qDebug() << "[IBQT WARN]" << id << errorCode << errorString
                  << "            CLEARING MESSAGE AND RE-REQUESTING.. 15 sec delay";
 
-        Symbol* s = m_symbolMap[id];
         if (s == NULL) {
             return;
         }
@@ -975,8 +1041,13 @@ void Manager::onError(const int id, const int errorCode, const QByteArray errorS
         }
     }
     else if (errorCode == 321) {
-        qDebug() << "[IBQT ERROR]" << id << errorCode << errorString;
-        qDebug() << "             This is probably a 'primary_exchange' issue... SKIPPING THE SYMBOL THAT CAUSED THE ERROR.";
+        if (s == NULL)
+            return;
+        qDebug() << "[IBQT ERROR]" << id << "symbol:" << s->symbolName << "errorCode:" << errorCode << errorString;
+        qDebug() << "             This is probably a 'primary_exchange' issue...";
+        qDebug() << "             exchange:" << s->contractDetails.summary.exchange;
+        qDebug() << "             primary_exchange:" << s->contractDetails.summary.primaryExchange;
+        qDebug() << "             sec_type:" << s->contractDetails.summary.secType;
         m_lock = false;
     }
     else
@@ -1203,29 +1274,74 @@ void Manager::onCurrentTimeTimerTimeout()
 
     m_currentTime = QDateTime::currentDateTime();
 
-    if (updating)
+    if (updating || m_symbolMap.isEmpty())
         return;
 
-    QList<int> reqIdList;
-    for (int i=0;i<m_symbolMap.keys().size();++i) {
-        int reqId = m_symbolMap.keys().at(i);
-        Symbol* s = m_symbolMap[reqId];
-        if (!reqIdList.contains(reqId) && !s->isRealTimeId) {
-            reqIdList.append(reqId);
-        }
-    }
-    for (int i=0;i<reqIdList.size();++i) {
-        updating = true;
-        int reqId = reqIdList.at(i);
-        Symbol* s = m_symbolMap[reqId];
-        QDateTime currentExchangeTime = m_currentTime.toTimeZone(QTimeZone(s->contractDetails.timeZoneId));
-        QDateTime currentliquidHoursStart = s->liquidHoursStartTime;
+    qDebug() << "In onCurrentTimeTimerTimeout()";
 
-        if (currentExchangeTime.date().day() != currentliquidHoursStart.date().day()) {
-            m_ibqt->reqContractDetails(reqId, s->contractDetails.summary);
-            delay(1000);
+    QList<int> keys = m_symbolMap.keys();
+    QList<int> contractDetailsIds;
+
+    for (int i=0;i<keys.size();++i) {
+        int reqId   = keys.at(i);
+        Symbol* s   = m_symbolMap[reqId];
+
+        if (s == NULL)
+            continue;
+
+        bool isContractDetailsId = false;
+
+        for (int j=0;j<keys.size();++j) {
+            Symbol* s1 = m_symbolMap[keys.at(i)];
+            if (reqId == s1->contractDetailsId)
+                s1->contractDetailsId = 0;
+                isContractDetailsId = true;
+        }
+
+        if (isContractDetailsId) {
+            contractDetailsIds.append(reqId);
+            continue;
+        }
+
+        if (s->liquidHoursStartTime.date().day() != QDateTime::currentDateTime().toTimeZone(s->contractDetails.timeZoneId).date().day()) {
+            qDebug() << "        m_symbolMap symbol name is:" << s->symbolName;
+            updating = true;
+            long nId = m_ibqt->getTickerId();
+            m_symbolMap[nId] = s;
+            s->contractDetailsId = nId;
+//            m_symbolMap.remove(reqId);
+
+            qDebug() << "        reqContractDetails for symbol:" << s->symbolName;
+
+            m_ibqt->reqContractDetails(nId, s->contractDetails.summary);
+            delay(1000 * 3);
         }
     }
+    for (int i=0;i<contractDetailsIds.size();++i) {
+        int key = contractDetailsIds.at(i);
+        m_symbolMap.remove(key);
+    }
+
+//    QList<int> reqIdList;
+//    for (int i=0;i<m_symbolMap.keys().size();++i) {
+//        int reqId = m_symbolMap.keys().at(i);
+//        Symbol* s = m_symbolMap[reqId];
+//        if (!reqIdList.contains(reqId) && !s->isRealTimeId) {
+//            reqIdList.append(reqId);
+//        }
+//    }
+//    for (int i=0;i<reqIdList.size();++i) {
+//        updating = true;
+//        int reqId = reqIdList.at(i);
+//        Symbol* s = m_symbolMap[reqId];
+//        QDateTime currentExchangeTime = m_currentTime.toTimeZone(QTimeZone(s->contractDetails.timeZoneId));
+//        QDateTime currentliquidHoursStart = s->liquidHoursStartTime;
+
+//        if (currentExchangeTime.date().day() != currentliquidHoursStart.date().day()) {
+//            m_ibqt->reqContractDetails(reqId, s->contractDetails.summary);
+//            delay(1000);
+//        }
+//    }
     updating = false;
 }
 
@@ -1236,32 +1352,48 @@ void Manager::onCurrentTimeTimerTimeout()
 
 //    qDebug() << "        m_symbolMap.size():" << m_symbolMap.size();
 
-//    QList<int>     reqIdList;
-//    reqIdList = QSet<int>::fromList(m_symbolMap.keys()).toList();
-//    for (int i=0;i<reqIdList.size();++i) {
-//        long reqId  = reqIdList.at(i);
+//    QList<int> keys = m_symbolMap.keys();
+//    QList<int> contractDetailsIds;
+
+//    for (int i=0;i<keys.size();++i) {
+//        int reqId   = keys.at(i);
 //        Symbol* s   = m_symbolMap[reqId];
 
 //        if (s == NULL)
 //            continue;
 
+//        bool isContractDetailsId = false;
+
+//        for (int j=0;j<keys.size();++j) {
+//            Symbol* s1 = m_symbolMap[keys.at(i)];
+//            if (reqId == s1->contractDetailsId)
+//                s1->contractDetailsId = 0;
+//                isContractDetailsId = true;
+//        }
+
+//        if (isContractDetailsId) {
+//            contractDetailsIds.append(reqId);
+//            continue;
+//        }
+
 //        qDebug() << "In onLiquidTradingHoursTimerTimeout()";
 
 //        qDebug() << "        m_symbolMap symbol name is:" << s->symbolName;
 
-////        if (/*s->isRealTimeId || */symbols.contains(s)) {
-////            qDebug() << "        ... this symbol is a repeat.. ignoring and moving to the next symbol";
-////            continue;
-////        }
-////        symbols.append(s);
+//        if (s->liquidHoursStartTime.date().day() != QDateTime::currentDateTime().toTimeZone(s->contractDetails.timeZoneId).date().day()) {
+//            long nId = m_ibqt->getTickerId();
+//            m_symbolMap[nId] = s;
+//            s->contractDetailsId = nId;
+////            m_symbolMap.remove(reqId);
 
-//        long nId = m_ibqt->getTickerId();
-//        m_symbolMap[nId] = s;
-//        m_symbolMap.remove(reqId);
+//            qDebug() << "        reqContractDetails for symbol:" << s->symbolName;
 
-//        qDebug() << "        reqContractDetails for symbol:" << s->symbolName;
-
-//        m_ibqt->reqContractDetails(nId, s->contractDetails.summary);
+//            m_ibqt->reqContractDetails(nId, s->contractDetails.summary);
+//        }
+//    }
+//    for (int i=0;i<contractDetailsIds.size();++i) {
+//        int key = contractDetailsIds.at(i);
+//        m_symbolMap.remove(key);
 //    }
 //}
 
@@ -1273,6 +1405,7 @@ bool Manager::isConnected() const
 
 void Manager::onTwsConnected()
 {
+    qDebug() << "In onTwsConnected()";
 //    m_loginAttemptNumber = 0;
 //    m_loginTimer->stop();
 }
@@ -1296,7 +1429,7 @@ QDateTime Manager::empiricalDataComplete(long reqId)
 
     QDateTime fdt = QDateTime::fromTime_t(s->model->record(0).value("timestamp").toUInt());
 
-    qDebug() << "In empericalDataComplete() .. fdt:" << fdt << "cdt:" << QDateTime::currentDateTime();
+    qDebug() << "In empericalDataComplete() for symbol:" << s->symbolName << ".. fdt:" << fdt << "cdt:" << QDateTime::currentDateTime();
 
     if (fdt.addMonths(m_numberOfMonths) < QDateTime::currentDateTime())
         return QDateTime();
@@ -1314,15 +1447,15 @@ QDateTime Manager::currentDataComplete(long reqId)
     QDateTime ldt = QDateTime::fromTime_t(s->model->record(s->model->rowCount()-1).value("timestamp").toUInt());
     QDateTime cdt = QDateTime::currentDateTime();
 
-    qDebug() << "In currentDataComplete() .. ldt:" << ldt << "cdt:" << cdt;
+    qDebug() << "In currentDataComplete() for symbol:" << s->symbolName << ".. ldt:" << ldt << "cdt:" << cdt;
 
     if (timeIsInLiquidTradingHours(s, ldt) && ldt.addSecs(m_timeFrameInSeconds) > cdt)
         return QDateTime();
 
-    qDebug() << "In currentDataComplete: ldt + m_timeFrameInSeconds:" << ldt.time().addSecs(m_timeFrameInSeconds);
-    qDebug() << "In currentDataComplete: m_liquidEnd.time:" << m_liquidHoursEndTime.time();
+//    qDebug() << "In currentDataComplete: ldt + m_timeFrameInSeconds:" << ldt.time().addSecs(m_timeFrameInSeconds);
+//    qDebug() << "In currentDataComplete: m_liquidEnd.time:" << m_liquidHoursEndTime.time();
 
-    if (timeIsSameTradingDay(s, ldt) && ldt.time().addSecs(m_timeFrameInSeconds) == m_liquidHoursEndTime.time()) {
+    if (timeIsSameTradingDay(s, ldt) && ldt.time().addSecs(m_timeFrameInSeconds) == s->liquidHoursEndTime.time()) {
         return QDateTime();
     }
 
